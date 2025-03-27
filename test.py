@@ -11,40 +11,43 @@ from message_base import (
     MessageBase,
     Seg,
 )
-from maim_message import global_api
+
+
+send_url = "http://localhost"
+receive_port = 18002  # 接收消息的端口
+send_port = 18000  # 发送消息的端口
+test_endpoint = "/api/message"
+
+# 创建并启动API实例
+api = BaseMessageAPI(host="0.0.0.0", port=receive_port)
 
 
 class TestLiveAPI(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         """测试前的设置"""
-        self.base_url = "http://localhost"
-        self.receive_port = 18002  # 接收消息的端口
-        self.send_port = 18000  # 发送消息的端口
-        self.test_endpoint = "/api/message"
-
-        # 创建并启动API实例
-        self.api = BaseMessageAPI(host="0.0.0.0", port=self.receive_port)
         self.received_messages = []
 
-        # 注册消息处理器
         async def message_handler(message):
             self.received_messages.append(message)
 
+        self.api = api
         self.api.register_message_handler(message_handler)
-
-        # 启动API服务器任务
         self.server_task = asyncio.create_task(self.api.run())
-        # 等待服务器启动
-        await asyncio.sleep(1)
+        try:
+            await asyncio.wait_for(asyncio.sleep(1), timeout=5)
+        except asyncio.TimeoutError:
+            self.skipTest("服务器启动超时")
 
     async def asyncTearDown(self):
         """测试后的清理"""
-        # 取消服务器任务
-        self.server_task.cancel()
-        try:
-            await self.server_task
-        except asyncio.CancelledError:
-            pass
+        if hasattr(self, "server_task"):
+            await self.api.stop()  # 先调用正常的停止流程
+            if not self.server_task.done():
+                self.server_task.cancel()
+                try:
+                    await asyncio.wait_for(self.server_task, timeout=100)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    pass
 
     async def test_send_and_receive_message(self):
         """测试向运行中的API发送消息并接收响应"""
@@ -74,29 +77,22 @@ class TestLiveAPI(unittest.IsolatedAsyncioTestCase):
         # 发送测试消息到发送端口
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                f"{self.base_url}:{self.send_port}{self.test_endpoint}",
+                f"{send_url}:{send_port}{test_endpoint}",
                 json=test_message,
             ) as response:
                 response_data = await response.json()
                 self.assertEqual(response.status, 200)
                 self.assertEqual(response_data["status"], "success")
-        while len(self.received_messages) == 0:
-            await asyncio.sleep(1)
-        received_message = self.received_messages[0]
-        print(received_message)
-
-
-async def message_handler(message):
-    print(f"Received message: {message}")
-
-
-def main():
-    # 注册消息处理器
-    global_api.register_message_handler(message_handler)
-
-    # 使用同步方式运行（推荐）
-    global_api.run_sync()
+        try:
+            async with asyncio.timeout(5):  # 设置5秒超时
+                while len(self.received_messages) == 0:
+                    await asyncio.sleep(0.1)
+                received_message = self.received_messages[0]
+                print(received_message)
+                self.received_messages.clear()
+        except asyncio.TimeoutError:
+            self.fail("等待接收消息超时")
 
 
 if __name__ == "__main__":
-    main()
+    unittest.main()

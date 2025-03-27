@@ -53,14 +53,28 @@ class BaseMessageAPI:
         config = uvicorn.Config(
             self.app, host=self.host, port=self.port, loop="asyncio"
         )
-        server = uvicorn.Server(config)
-        await server.serve()
+        self.server = uvicorn.Server(config)
+
+        await self.server.serve()
 
     async def start_server(self):
         """启动服务器的异步方法"""
         if not self._running:
             self._running = True
             await self.run()
+
+    async def stop(self):
+        """停止服务器"""
+        if hasattr(self, "server"):
+            self._running = False
+            # 正确关闭 uvicorn 服务器
+            self.server.should_exit = True
+            await self.server.shutdown()
+            # 等待服务器完全停止
+            if hasattr(self.server, "started") and self.server.started:
+                await self.server.main_loop()
+            # 清理处理程序
+            self.message_handlers.clear()
 
     def start(self):
         """启动服务器的便捷方法"""
@@ -72,7 +86,3 @@ class BaseMessageAPI:
             pass
         finally:
             loop.close()
-
-
-# 创建全局API实例
-global_api = BaseMessageAPI()
