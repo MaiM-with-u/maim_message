@@ -54,8 +54,11 @@ class BaseMessageAPI:
             self.app, host=self.host, port=self.port, loop="asyncio"
         )
         self.server = uvicorn.Server(config)
-
-        await self.server.serve()
+        try:
+            await self.server.serve()
+        except KeyboardInterrupt as e:
+            self.stop()
+            raise KeyboardInterrupt from e
 
     async def start_server(self):
         """启动服务器的异步方法"""
