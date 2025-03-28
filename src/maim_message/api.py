@@ -21,12 +21,12 @@ class BaseMessageAPI:
 
         @self.app.post("/api/message")
         async def handle_message(message: Dict[str, Any]):
-            # try:
-            for handler in self.message_handlers:
-                await handler(message)
-            return {"status": "success"}
-            # except Exception as e:
-            #     raise HTTPException(status_code=500, detail=str(e)) from e
+            try:
+                for handler in self.message_handlers:
+                    await handler(message)
+                return {"status": "success"}
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e)) from e
 
     def register_message_handler(self, handler: Callable):
         """注册消息处理函数"""

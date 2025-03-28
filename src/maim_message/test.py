@@ -52,8 +52,8 @@ class TestLiveAPI(unittest.IsolatedAsyncioTestCase):
     async def test_send_and_receive_message(self):
         """测试向运行中的API发送消息并接收响应"""
         # 准备测试消息
-        user_info = UserInfo(user_id=12345678, user_nickname="测试用户", platform="qq1")
-        group_info = GroupInfo(group_id=12345678, group_name="测试群", platform="qq1")
+        user_info = UserInfo(user_id=12345678, user_nickname="测试用户", platform="qq")
+        group_info = GroupInfo(group_id=112345678, group_name="测试群", platform="qq")
         format_info = FormatInfo(
             content_format=["text"], accept_format=["text", "emoji", "reply"]
         )
@@ -79,6 +79,10 @@ class TestLiveAPI(unittest.IsolatedAsyncioTestCase):
         await self.api.send_message(
             f"{send_url}:{send_port}{test_endpoint}", test_message
         )
+        await self.api.send_message(
+            f"{send_url}:{send_port}{test_endpoint}", test_message
+        )
+
         try:
             async with asyncio.timeout(30):  # 设置5秒超时
                 while len(self.received_messages) == 0:
