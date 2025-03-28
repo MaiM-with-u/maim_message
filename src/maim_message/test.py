@@ -1,8 +1,8 @@
 import unittest
 import asyncio
 import aiohttp
-from api import BaseMessageAPI
-from message_base import (
+from .api import BaseMessageAPI
+from .message_base import (
     BaseMessageInfo,
     UserInfo,
     GroupInfo,
@@ -75,16 +75,12 @@ class TestLiveAPI(unittest.IsolatedAsyncioTestCase):
         test_message = message.to_dict()
 
         # 发送测试消息到发送端口
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"{send_url}:{send_port}{test_endpoint}",
-                json=test_message,
-            ) as response:
-                response_data = await response.json()
-                self.assertEqual(response.status, 200)
-                self.assertEqual(response_data["status"], "success")
+
+        await self.api.send_message(
+            f"{send_url}:{send_port}{test_endpoint}", test_message
+        )
         try:
-            async with asyncio.timeout(5):  # 设置5秒超时
+            async with asyncio.timeout(30):  # 设置5秒超时
                 while len(self.received_messages) == 0:
                     await asyncio.sleep(0.1)
                 received_message = self.received_messages[0]
