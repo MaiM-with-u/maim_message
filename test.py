@@ -15,7 +15,7 @@ from message_base import (
 
 send_url = "http://localhost"
 receive_port = 18002  # 接收消息的端口
-send_port = 18000  # 发送消息的端口
+send_port = 8090  # 发送消息的端口
 test_endpoint = "/api/message"
 
 # 创建并启动API实例
@@ -52,8 +52,8 @@ class TestLiveAPI(unittest.IsolatedAsyncioTestCase):
     async def test_send_and_receive_message(self):
         """测试向运行中的API发送消息并接收响应"""
         # 准备测试消息
-        user_info = UserInfo(user_id=12345678, user_nickname="测试用户", platform="qq")
-        group_info = GroupInfo(group_id=12345678, group_name="测试群", platform="qq")
+        user_info = UserInfo(user_id=12345678, user_nickname="测试用户", platform="qq1")
+        group_info = GroupInfo(group_id=12345678, group_name="测试群", platform="qq1")
         format_info = FormatInfo(
             content_format=["text"], accept_format=["text", "emoji", "reply"]
         )
