@@ -145,6 +145,10 @@ message_info = BaseMessageInfo(
     # 选填和暂未启用
     format_info=format_info,
     template_info=None,
+    # 自定义设置，需要参考每个模块支持的设置
+    additional_config={
+        "maimcore_reply_probability_gain": 0.5  # 回复概率增益
+    },
 )
 
 message_segment = Seg(

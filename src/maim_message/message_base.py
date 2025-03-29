@@ -173,6 +173,7 @@ class BaseMessageInfo:
     user_info: Optional[UserInfo] = None
     format_info: Optional[FormatInfo] = None
     template_info: Optional[TemplateInfo] = None
+    additional_config: Optional[dict] = None
 
     def to_dict(self) -> Dict:
         """转换为字典格式"""
@@ -203,6 +204,7 @@ class BaseMessageInfo:
             platform=data.get("platform"),
             message_id=data.get("message_id"),
             time=data.get("time"),
+            additional_config=data.get("additional_config", None),
             group_info=group_info,
             user_info=user_info,
             format_info=format_info,
