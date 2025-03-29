@@ -68,7 +68,9 @@ class GroupInfo:
         if data.get("group_id") is None:
             return None
         return cls(
-            platform=data.get("platform"), group_id=data.get("group_id"), group_name=data.get("group_name", None)
+            platform=data.get("platform"),
+            group_id=data.get("group_id"),
+            group_name=data.get("group_name", None),
         )
 
 
@@ -225,7 +227,10 @@ class MessageBase:
                 - message_segment: 转换为字典格式
                 - raw_message: 如果存在则包含
         """
-        result = {"message_info": self.message_info.to_dict(), "message_segment": self.message_segment.to_dict()}
+        result = {
+            "message_info": self.message_info.to_dict(),
+            "message_segment": self.message_segment.to_dict(),
+        }
         if self.raw_message is not None:
             result["raw_message"] = self.raw_message
         return result
@@ -241,6 +246,10 @@ class MessageBase:
             MessageBase: 新的实例
         """
         message_info = BaseMessageInfo.from_dict(data.get("message_info", {}))
-        message_segment = Seg(**data.get("message_segment", {}))
+        message_segment = Seg.from_dict(data.get("message_segment", {}))
         raw_message = data.get("raw_message", None)
-        return cls(message_info=message_info, message_segment=message_segment, raw_message=raw_message)
+        return cls(
+            message_info=message_info,
+            message_segment=message_segment,
+            raw_message=raw_message,
+        )

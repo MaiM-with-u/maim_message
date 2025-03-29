@@ -1,8 +1,8 @@
 import unittest
 import asyncio
 import aiohttp
-from .api import BaseMessageAPI
-from .message_base import (
+from api import BaseMessageAPI
+from maim_message import (
     BaseMessageInfo,
     UserInfo,
     GroupInfo,
@@ -82,6 +82,7 @@ class TestLiveAPI(unittest.IsolatedAsyncioTestCase):
         await self.api.send_message(
             f"{send_url}:{send_port}{test_endpoint}", test_message
         )
+        print("send success")
 
         try:
             async with asyncio.timeout(30):  # 设置5秒超时
