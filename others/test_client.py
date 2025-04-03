@@ -6,103 +6,146 @@ from maim_message import (
     TemplateInfo,
     MessageBase,
     Seg,
-    BaseMessageAPI,
 )
-
+from maim_message.router import Router, RouteConfig, TargetConfig
 import asyncio
 
 
-api = BaseMessageAPI("0.0.0.0", 19001)
+def construct_message(platform):
+    # 构造消息
+    user_info = UserInfo(
+        # 必填
+        platform=platform,
+        user_id=12348765,
+        # 选填
+        user_nickname="maimai",
+        user_cardname="mai god",
+    )
 
-# 构造消息
-user_info = UserInfo(
-    # 必填
-    platform="qq123",
-    user_id=12348765,
-    # 选填
-    user_nickname="maimai",
-    user_cardname="mai god",
+    group_info = GroupInfo(
+        # 必填
+        platform=platform,  # platform请务必保持一致
+        group_id=12345678,
+        # 选填
+        group_name="aaabbb",
+    )
+
+    format_info = FormatInfo(
+        # 消息内容中包含的Seg的type列表
+        content_format=["text", "image", "emoji", "at", "reply", "voice"],
+        # 消息发出后，期望最终的消息中包含的消息类型，可以帮助某些plugin判断是否向消息中添加某些消息类型
+        accept_format=["text", "image", "emoji", "reply"],
+    )
+
+    # 暂时不启用，可置None
+    template_info_custom = TemplateInfo(
+        template_items={
+            "detailed_text": "[{user_nickname}({user_nickname})]{user_cardname}: {processed_text}",
+            "main_prompt_template": "...",
+        },
+        template_name="qq123_default",
+        template_default=False,
+    )
+
+    template_info_default = TemplateInfo(template_default=True)
+
+    message_info = BaseMessageInfo(
+        # 必填
+        platform=platform,
+        message_id="12345678",  # 只会在reply和撤回消息等功能下启用，且可以不保证unique
+        time=1234567,  # 时间戳
+        group_info=group_info,
+        user_info=user_info,
+        # 选填和暂未启用
+        format_info=format_info,
+        template_info=None,
+        additional_config={
+            "maimcore_reply_probability_gain": 0.5  # 回复概率增益
+        },
+    )
+
+    message_segment = Seg(
+        "seglist",
+        [
+            Seg("text", "111(raw text)"),
+            Seg("emoji", "base64(raw base64)"),
+            Seg("image", "base64(raw base64)"),
+            Seg("at", "111222333(qq number)"),
+            Seg("reply", "123456(message id)"),
+            Seg("voice", "wip"),
+        ],
+    )
+
+    raw_message = "可有可无"
+
+    message = MessageBase(
+        # 必填
+        message_info=message_info,
+        message_segment=message_segment,
+        # 选填
+        raw_message=raw_message,
+    )
+    return message
+
+
+async def message_handler(message):
+    """消息处理函数"""
+    print(f"收到消息: {message}")
+
+
+# 配置路由
+route_config = RouteConfig(
+    route_config={
+        "qq123": TargetConfig(
+            url="ws://127.0.0.1:19000/ws",
+            token=None,  # 如果需要token验证则在这里设置
+        ),
+        "qq321": TargetConfig(
+            url="ws://127.0.0.1:19000/ws",
+            token=None,  # 如果需要token验证则在这里设置
+        ),
+        "qq111": TargetConfig(
+            url="ws://127.0.0.1:19000/ws",
+            token=None,  # 如果需要token验证则在这里设置
+        ),
+    }
 )
 
-group_info = GroupInfo(
-    # 必填
-    platform="qq123",  # platform请务必保持一致
-    group_id=12345678,
-    # 选填
-    group_name="aaabbb",
-)
-
-format_info = FormatInfo(
-    # 消息内容中包含的Seg的type列表
-    content_format=["text", "image", "emoji", "at", "reply", "voice"],
-    # 消息发出后，期望最终的消息中包含的消息类型，可以帮助某些plugin判断是否向消息中添加某些消息类型
-    accept_format=["text", "image", "emoji", "reply"],
-)
-
-# 暂时不启用，可置None
-template_info_custom = TemplateInfo(
-    template_items={
-        "detailed_text": "[{user_nickname}({user_nickname})]{user_cardname}: {processed_text}",
-        "main_prompt_template": "...",
-    },
-    template_name="qq123_default",
-    template_default=False,
-)
-
-template_info_default = TemplateInfo(template_default=True)
-
-message_info = BaseMessageInfo(
-    # 必填
-    platform="qq123",
-    message_id="12345678",  # 只会在reply和撤回消息等功能下启用，且可以不保证unique
-    time=1234567,  # 时间戳
-    group_info=group_info,
-    user_info=user_info,
-    # 选填和暂未启用
-    format_info=format_info,
-    template_info=None,
-    additional_config={
-        "maimcore_reply_probability_gain": 0.5  # 回复概率增益
-    },
-)
-
-message_segment = Seg(
-    "seglist",
-    [
-        Seg("text", "111(raw text)"),
-        Seg("emoji", "base64(raw base64)"),
-        Seg("image", "base64(raw base64)"),
-        Seg("at", "111222333(qq number)"),
-        Seg("reply", "123456(message id)"),
-        Seg("voice", "wip"),
-    ],
-)
-
-raw_message = "可有可无"
-
-message = MessageBase(
-    # 必填
-    message_info=message_info,
-    message_segment=message_segment,
-    # 选填
-    raw_message=raw_message,
-)
+# 创建路由器实例
+router = Router(route_config)
 
 
-async def handle(message_data):
-    print(message_data)
+async def main():
+    # 注册消息处理器
+    router.register_class_handler(message_handler)
+
+    try:
+        # 启动路由器（会自动连接所有配置的平台）
+        router_task = asyncio.create_task(router.run())
+
+        # 等待连接建立
+        await asyncio.sleep(2)
+
+        # 发送测试消息
+        await router.send_message(construct_message("qq123"))
+        await router.send_message(construct_message("qq321"))
+        await router.send_message(construct_message("qq111"))
+
+        # 等待中断信号
+        while True:
+            try:
+                await asyncio.sleep(1)
+            except asyncio.CancelledError:
+                break
+
+    finally:
+        print("正在关闭连接...")
+        await router.stop()
+        print("已关闭所有连接")
 
 
-api.register_message_handler(handle)
-
-
-# 构造函数使得消息发送晚于server启动
-async def send_message():
-    await asyncio.sleep(2)
-    await api.send_message("http://127.0.0.1:19000/api/message", message.to_dict())
-
-
-loop = asyncio.new_event_loop()
-asyncio.set_event_loop(loop)
-api_task = asyncio.gather(api.run(), send_message())
-loop.run_until_complete(api_task)
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass  # 让asyncio.run处理清理工作

@@ -2,7 +2,7 @@
 
 __version__ = "0.1.0"
 
-from .api import BaseMessageAPI
+from .api import MessageClient, MessageServer
 from .message_base import (
     Seg,
     GroupInfo,
@@ -14,7 +14,8 @@ from .message_base import (
 )
 
 __all__ = [
-    "BaseMessageAPI",
+    "MessageClient",
+    "MessageServer",
     "Seg",
     "GroupInfo",
     "UserInfo",
