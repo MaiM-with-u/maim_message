@@ -6,8 +6,10 @@ from maim_message import (
     TemplateInfo,
     MessageBase,
     Seg,
+    Router,
+    RouteConfig,
+    TargetConfig,
 )
-from maim_message.router import Router, RouteConfig, TargetConfig
 import asyncio
 
 
@@ -131,12 +133,7 @@ async def main():
         await router.send_message(construct_message("qq321"))
         await router.send_message(construct_message("qq111"))
 
-        # 等待中断信号
-        while True:
-            try:
-                await asyncio.sleep(1)
-            except asyncio.CancelledError:
-                break
+        await router_task
 
     finally:
         print("正在关闭连接...")

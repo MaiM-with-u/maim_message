@@ -3,6 +3,7 @@
 __version__ = "0.1.0"
 
 from .api import MessageClient, MessageServer
+from .router import Router, RouteConfig, TargetConfig
 from .message_base import (
     Seg,
     GroupInfo,
@@ -16,6 +17,9 @@ from .message_base import (
 __all__ = [
     "MessageClient",
     "MessageServer",
+    "Router",
+    "RouteConfig",
+    "TargetConfig",
     "Seg",
     "GroupInfo",
     "UserInfo",

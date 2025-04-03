@@ -1,8 +1,4 @@
-from maim_message.api import MessageServer
-from maim_message import (
-    MessageBase,
-    Seg,
-)
+from maim_message import MessageBase, Seg, MessageServer
 
 
 async def process_seg(seg: Seg):
