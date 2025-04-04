@@ -192,9 +192,44 @@ async def main():
 
         # 发送测试消息
         await router.send_message(construct_message("qq123"))
-        await router.send_message(construct_message("qq321"))
-        await router.send_message(construct_message("qq111"))
 
+        # 等待3秒后更新配置
+        await asyncio.sleep(3)
+        print("\n准备更新连接配置...")
+
+        # 测试新的配置更新
+        new_config = {
+            "route_config": {
+                # 保持qq123不变
+                "qq123": {
+                    "url": "ws://127.0.0.1:19000/ws",
+                    "token": None,
+                },
+                # 移除qq321
+                # 更改qq111的token
+                "qq111": {
+                    "url": "ws://127.0.0.1:19000/ws",
+                    "token": None,
+                },
+                # 添加新平台
+                "qq999": {
+                    "url": "ws://127.0.0.1:19000/ws",
+                    "token": None,
+                },
+            }
+        }
+
+        await router.update_config(new_config)
+        print("配置更新完成")
+
+        # 等待新连接建立
+        await asyncio.sleep(2)
+
+        # 测试新配置下的消息发送
+        await router.send_message(construct_message("qq111"))
+        await router.send_message(construct_message("qq999"))
+
+        # 保持运行直到被中断
         await router_task
 
     finally:
