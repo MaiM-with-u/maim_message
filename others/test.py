@@ -1,7 +1,3 @@
-import unittest
-import asyncio
-import aiohttp
-from api import BaseMessageAPI
 from maim_message import (
     BaseMessageInfo,
     UserInfo,
@@ -10,90 +6,148 @@ from maim_message import (
     TemplateInfo,
     MessageBase,
     Seg,
+    Router,
+    RouteConfig,
+    TargetConfig,
+)
+import asyncio
+
+
+def construct_message(platform):
+    # 构造消息
+    user_info = UserInfo(
+        # 必填
+        platform=platform,
+        user_id=12348765,
+        # 选填
+        user_nickname="maimai",
+        user_cardname="mai god",
+    )
+
+    group_info = GroupInfo(
+        # 必填
+        platform=platform,  # platform请务必保持一致
+        group_id=12345678,
+        # 选填
+        group_name="aaabbb",
+    )
+
+    format_info = FormatInfo(
+        # 消息内容中包含的Seg的type列表
+        content_format=["text", "image", "emoji", "at", "reply", "voice"],
+        # 消息发出后，期望最终的消息中包含的消息类型，可以帮助某些plugin判断是否向消息中添加某些消息类型
+        accept_format=["text", "image", "emoji", "reply"],
+    )
+
+    # 暂时不启用，可置None
+    template_info_custom = TemplateInfo(
+        template_items={
+            "detailed_text": "[{user_nickname}({user_nickname})]{user_cardname}: {processed_text}",
+            "main_prompt_template": "...",
+        },
+        template_name="qq123_default",
+        template_default=False,
+    )
+
+    template_info_default = TemplateInfo(template_default=True)
+
+    message_info = BaseMessageInfo(
+        # 必填
+        platform=platform,
+        message_id="12345678",  # 只会在reply和撤回消息等功能下启用，且可以不保证unique
+        time=1234567,  # 时间戳
+        group_info=group_info,
+        user_info=user_info,
+        # 选填和暂未启用
+        format_info=format_info,
+        template_info=None,
+        additional_config={
+            "maimcore_reply_probability_gain": 0.5  # 回复概率增益
+        },
+    )
+
+    message_segment = Seg(
+        "seglist",
+        [
+            Seg("text", "111(raw text)"),
+            Seg("emoji", "base64(raw base64)"),
+            Seg("image", "base64(raw base64)"),
+            Seg("at", "111222333(qq number)"),
+            Seg("reply", "123456(message id)"),
+            Seg("voice", "wip"),
+        ],
+    )
+
+    raw_message = "可有可无"
+
+    message = MessageBase(
+        # 必填
+        message_info=message_info,
+        message_segment=message_segment,
+        # 选填
+        raw_message=raw_message,
+    )
+    return message
+
+
+async def message_handler(message):
+    """消息处理函数"""
+    print(f"收到消息: {message}")
+
+
+# 配置路由
+route_config = RouteConfig(
+    route_config={
+        "qq123": TargetConfig(
+            url="ws://127.0.0.1:8090/ws",
+            token=None,  # 如果需要token验证则在这里设置
+        ),
+        "qq321": TargetConfig(
+            url="ws://127.0.0.1:8090/ws",
+            token=None,  # 如果需要token验证则在这里设置
+        ),
+        "qq111": TargetConfig(
+            url="ws://127.0.0.1:8090/ws",
+            token=None,  # 如果需要token验证则在这里设置
+        ),
+    }
 )
 
-
-send_url = "http://localhost"
-receive_port = 18002  # 接收消息的端口
-send_port = 8090  # 发送消息的端口
-test_endpoint = "/api/message"
-
-# 创建并启动API实例
-api = BaseMessageAPI(host="0.0.0.0", port=receive_port)
+# 创建路由器实例
+router = Router(route_config)
 
 
-class TestLiveAPI(unittest.IsolatedAsyncioTestCase):
-    async def asyncSetUp(self):
-        """测试前的设置"""
-        self.received_messages = []
+async def main():
+    # 注册消息处理器
+    router.register_class_handler(message_handler)
 
-        async def message_handler(message):
-            self.received_messages.append(message)
+    try:
+        # 启动路由器（会自动连接所有配置的平台）
+        router_task = asyncio.create_task(router.run())
 
-        self.api = api
-        self.api.register_message_handler(message_handler)
-        self.server_task = asyncio.create_task(self.api.run())
-        try:
-            await asyncio.wait_for(asyncio.sleep(1), timeout=5)
-        except asyncio.TimeoutError:
-            self.skipTest("服务器启动超时")
+        # 等待连接建立
+        await asyncio.sleep(2)
 
-    async def asyncTearDown(self):
-        """测试后的清理"""
-        if hasattr(self, "server_task"):
-            await self.api.stop()  # 先调用正常的停止流程
-            if not self.server_task.done():
-                self.server_task.cancel()
-                try:
-                    await asyncio.wait_for(self.server_task, timeout=100)
-                except (asyncio.CancelledError, asyncio.TimeoutError):
-                    pass
+        # 发送测试消息
+        await router.send_message(construct_message("qq123"))
+        await router.send_message(construct_message("qq321"))
+        await router.send_message(construct_message("qq111"))
 
-    async def test_send_and_receive_message(self):
-        """测试向运行中的API发送消息并接收响应"""
-        # 准备测试消息
-        user_info = UserInfo(user_id=12345678, user_nickname="测试用户", platform="qq")
-        group_info = GroupInfo(group_id=112345678, group_name="测试群", platform="qq")
-        format_info = FormatInfo(
-            content_format=["text"], accept_format=["text", "emoji", "reply"]
-        )
-        template_info = None
-        message_info = BaseMessageInfo(
-            platform="qq",
-            message_id=12345678,
-            time=12345678,
-            group_info=group_info,
-            user_info=user_info,
-            format_info=format_info,
-            template_info=template_info,
-        )
-        message = MessageBase(
-            message_info=message_info,
-            raw_message="测试消息",
-            message_segment=Seg(type="text", data="测试消息"),
-        )
-        test_message = message.to_dict()
+        # 等待3秒后更新配置
+        await asyncio.sleep(3)
+        print("\n准备更新连接配置...")
 
-        # 发送测试消息到发送端口
+        # 保持运行直到被中断
+        await router_task
 
-        await self.api.send_message(
-            f"{send_url}:{send_port}{test_endpoint}", test_message
-        )
-        await self.api.send_message(
-            f"{send_url}:{send_port}{test_endpoint}", test_message
-        )
-        print("send success")
-
-        try:
-            async with asyncio.timeout(30):  # 设置5秒超时
-                while len(self.received_messages) == 0:
-                    await asyncio.sleep(0.1)
-                received_message = self.received_messages[0]
-                print(received_message)
-                self.received_messages.clear()
-        except asyncio.TimeoutError:
-            self.fail("等待接收消息超时")
+    finally:
+        print("正在关闭连接...")
+        await router.stop()
+        print("已关闭所有连接")
 
 
 if __name__ == "__main__":
-    unittest.main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass  # 让asyncio.run处理清理工作

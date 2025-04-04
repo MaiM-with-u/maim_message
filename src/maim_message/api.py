@@ -159,7 +159,7 @@ class MessageServer(BaseMessageHandler):
         try:
             await self.server.serve()
         except KeyboardInterrupt as e:
-            self.stop()
+            await self.stop()
             raise KeyboardInterrupt from e
 
     async def start_server(self):
