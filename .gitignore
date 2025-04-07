@@ -18,4 +18,4 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-others/test.py
+others/
