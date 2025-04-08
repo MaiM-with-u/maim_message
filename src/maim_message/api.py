@@ -212,6 +212,7 @@ class MessageClient(BaseMessageHandler):
         self.remote_ws_connected = False
         self.remote_reconnect_interval = 5
         self._running = False
+        self.retry_count = 0
 
     @classmethod
     def register_class_handler(cls, handler: Callable):
@@ -233,7 +234,7 @@ class MessageClient(BaseMessageHandler):
 
     async def run(self):
         """维持websocket连接和消息处理"""
-        retry_count = 0
+        self.retry_count = 0
         headers = {"platform": self.platform}
         if self.remote_ws_token:
             headers["Authorization"] = str(self.remote_ws_token)
@@ -246,7 +247,7 @@ class MessageClient(BaseMessageHandler):
                     self.remote_ws = ws
                     self.remote_ws_connected = True
                     print(f"已连接到 {self.remote_ws_url}")
-                    retry_count = 0
+                    self.retry_count = 0
 
                     try:
                         async for msg in ws:
@@ -267,8 +268,8 @@ class MessageClient(BaseMessageHandler):
                         await ws.close()
 
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-                print(f"连接失败 ({retry_count}): {e}")
-                retry_count += 1
+                print(f"连接失败 ({self.retry_count}): {e}")
+                self.retry_count += 1
             except asyncio.CancelledError:
                 break
             finally:

@@ -16,47 +16,27 @@ pip install -e .
 from maim_message import MessageBase
 ```
 
-## 简要构造一个maimcore plugin
-plugin与上下游交互分为两个部分，api和message_base，api提供了异步的可暴露的websocket接口以及uvicorn服务器，以及向别的api接口发送数据的方法，message_base中提供了消息数据的序列化和反序列化。在plugin中，我们需要接受来自上游的消息数据，反序列化成message，经过处理后发送给下游（在这里为了方便简单模仿了maimcore的架构，即作为server收到消息后返回给发送消息的client，实际制作插件时应当另开client向下游发送），一个简单的流程如下：
+## 介绍
+maim_message是从maimbot项目衍生出来的各个组件之间的消息定义和交换的库，为了实现多平台和方便开发者开发，maimbot从与nonebot耦合发展到maimcore阶段，maimcore只暴露自己的websocket接口，别的组件可以通过maim_message提供的MessageClient类与maimcore连接，也可以构造MessageServer接受MessageClient连接。
+
+在这种通信协议下，可以产生多种组件类型，例如最简单的nonebot_adapter与maimcore之间的通信，nonebot作为MessageClient，连接作为MessageServer的maimcore，从而实现一个消息客户端的开发。另外还支持类似代理或中间件的插件形式，例如让nonebot连接到插件的MessageServer，插件再通过MessageClient连接到maimcore。
+
+消息的构造使用MessageBase，MessageBase提供了序列化和反序列化的方法，是消息通信的基本格式，使用时可以直接构造MessageBase，也可以继承MessageBase后构造。
+
+消息的基本内容由maim_message的Seg定义，Seg有type和data两个属性，除了特殊类型seglist之外，type并无限制，但maimcore只能处理类型为text，image，emoji，seglist的Seg，Seg支持嵌套，seglist类型的Seg的data定义为一个Seg列表，便于含有多种类型组合的消息，以及含有嵌套的消息可以直接递归的解析成Seg。
+
+目前maimcore可以处理的Seg类型以及定义如下:
 ```python
-from maim_message import MessageBase, Seg, MessageServer
-
-
-async def process_seg(seg: Seg):
-    """处理消息段的递归函数"""
-    if seg.type == "seglist":
-        seglist = seg.data
-        for single_seg in seglist:
-            await process_seg(single_seg)
-    # 实际内容处理逻辑
-    if seg.type == "voice":
-        seg.type = "text"
-        seg.data = "[音频]"
-    elif seg.type == "at":
-        seg.type = "text"
-        seg.data = "[@某人]"
-
-
-async def handle_message(message_data):
-    """消息处理函数"""
-    message = MessageBase.from_dict(message_data)
-    await process_seg(message.message_segment)
-
-    # 将处理后的消息广播给所有连接的客户端
-    await server.send_message(message)
-
-
-if __name__ == "__main__":
-    # 创建服务器实例
-    server = MessageServer(host="0.0.0.0", port=19000)
-
-    # 注册消息处理器
-    server.register_message_handler(handle_message)
-
-    # 运行服务器
-    server.run_sync()
-
+Seg(
+        "seglist",
+        [
+            Seg("text", "111(raw text)"),
+            Seg("emoji", "base64(无头base64)"),
+            Seg("image", "base64(无头base64)"),
+        ],
+    )
 ```
+
 ## 简要构造一个消息客户端
 涉及到标准消息的构建与客户端的建立，maim_message提供了一个Router类，可用于管理一个客户端程序处理多种不同平台的数据时建立的多个MessageClient，可参考如下。
 ```python
@@ -193,42 +173,6 @@ async def main():
         # 发送测试消息
         await router.send_message(construct_message("qq123"))
 
-        # 等待3秒后更新配置
-        await asyncio.sleep(3)
-        print("\n准备更新连接配置...")
-
-        # 测试新的配置更新
-        new_config = {
-            "route_config": {
-                # 保持qq123不变
-                "qq123": {
-                    "url": "ws://127.0.0.1:19000/ws",
-                    "token": None,
-                },
-                # 移除qq321
-                # 更改qq111的token
-                "qq111": {
-                    "url": "ws://127.0.0.1:19000/ws",
-                    "token": None,
-                },
-                # 添加新平台
-                "qq999": {
-                    "url": "ws://127.0.0.1:19000/ws",
-                    "token": None,
-                },
-            }
-        }
-
-        await router.update_config(new_config)
-        print("配置更新完成")
-
-        # 等待新连接建立
-        await asyncio.sleep(2)
-
-        # 测试新配置下的消息发送
-        await router.send_message(construct_message("qq111"))
-        await router.send_message(construct_message("qq999"))
-
         # 保持运行直到被中断
         await router_task
 
@@ -245,6 +189,50 @@ if __name__ == "__main__":
         pass  # 让asyncio.run处理清理工作
 
 ```
+
+
+## 构造一个maimcore plugin
+实际上只是模仿了maimcore的结构，真正的plugins应该继续向下游发送消息。
+```python
+from maim_message import MessageBase, Seg, MessageServer
+
+
+async def process_seg(seg: Seg):
+    """处理消息段的递归函数"""
+    if seg.type == "seglist":
+        seglist = seg.data
+        for single_seg in seglist:
+            await process_seg(single_seg)
+    # 实际内容处理逻辑
+    if seg.type == "voice":
+        seg.type = "text"
+        seg.data = "[音频]"
+    elif seg.type == "at":
+        seg.type = "text"
+        seg.data = "[@某人]"
+
+
+async def handle_message(message_data):
+    """消息处理函数"""
+    message = MessageBase.from_dict(message_data)
+    await process_seg(message.message_segment)
+
+    # 将处理后的消息广播给所有连接的客户端
+    await server.send_message(message)
+
+
+if __name__ == "__main__":
+    # 创建服务器实例
+    server = MessageServer(host="0.0.0.0", port=19000)
+
+    # 注册消息处理器
+    server.register_message_handler(handle_message)
+
+    # 运行服务器
+    server.run_sync()
+
+```
+
 
 ## 许可证
 
