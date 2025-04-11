@@ -37,6 +37,9 @@ Seg(
     )
 ```
 
+## 构造一个合法消息
+<img src="./img/maim_message.png" alt="由于图画的太好我就不打文本了" />
+
 ## 简要构造一个消息客户端
 涉及到标准消息的构建与客户端的建立，maim_message提供了一个Router类，可用于管理一个客户端程序处理多种不同平台的数据时建立的多个MessageClient，可参考如下。
 ```python
