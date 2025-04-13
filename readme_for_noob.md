@@ -70,11 +70,8 @@ async def handle_response_from_maimcore(message: MessageBase):
     # ...
 
 # 4. 注册消息处理器
-# 注意：这里假设 router 实例能够接收来自 MaimCore 的消息并调用处理器
-# (根据原始 README 示例，Router 似乎主要用于发送，接收逻辑可能需要查看 Router 实现细节或示例)
-# 如果 Router 支持双向处理，则可以注册：
-# router.register_class_handler(handle_response_from_maimcore)
-# 如果 Router 主要用于发送，接收逻辑可能在适配器的主 WebSocket 连接处理函数中完成
+# Router 会自动将从对应 platform 收到的消息传递给注册的处理器
+router.register_class_handler(handle_response_from_maimcore)
 
 # 5. 构造要发送给 MaimCore 的消息
 def construct_message_to_maimcore(platform_name: str, user_id: int, group_id: int, text_content: str) -> MessageBase:
@@ -96,7 +93,7 @@ def construct_message_to_maimcore(platform_name: str, user_id: int, group_id: in
 
 # 6. 运行并发送消息
 async def run_client():
-    # 启动 Router (它会自动尝试连接所有配置的目标)
+    # 启动 Router (它会自动尝试连接所有配置的目标，并开始接收消息)
     # run() 通常是异步阻塞的，需要 create_task
     router_task = asyncio.create_task(router.run())
     print("Router 正在启动并尝试连接...")
@@ -218,7 +215,7 @@ if __name__ == "__main__":
 
 ## 实际应用示例
 
-*   **MaiBot-Napcat-Adapter**: 一个典型的适配器实现，它使用 `maim_message` 连接 NapcatQQ (作为消息来源) 和 MaimCore (作为消息处理后端)。您可以参考 [MaiBot-Napcat-Adapter-main](https://github.com/example/MaiBot-Napcat-Adapter-main) (请替换为实际链接) 来了解 `maim_message` 在实际项目中的应用。
+*   **MaiBot-Napcat-Adapter**: 一个典型的适配器实现，它使用 `maim_message` 连接 NapcatQQ (作为消息来源) 和 MaimCore (作为消息处理后端)。您可以参考 [MaiBot-Napcat-Adapter-main](https://github.com/MaiM-with-u/MaiBot-Napcat-Adapter) 来了解 `maim_message` 在实际项目中的应用。
 
 ## API 概览 (主要类)
 
