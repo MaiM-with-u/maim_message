@@ -42,13 +42,22 @@ class MessageServer(BaseMessageHandler):
 
     _class_handlers: List[Callable] = []  # 类级别的消息处理器
 
-    def __init__(self, host: str = "0.0.0.0", port: int = 18000, enable_token=False):
+    def __init__(
+        self,
+        host: str = "0.0.0.0",
+        port: int = 18000,
+        enable_token=False,
+        app: Optional[FastAPI] = None,
+        path: str = "/ws",
+    ):
         super().__init__()
         # 将类级别的处理器添加到实例处理器中
         self.message_handlers.extend(self._class_handlers)
-        self.app = FastAPI()
         self.host = host
         self.port = port
+        self.path = path
+        self.app = app or FastAPI()
+        self.own_app = app is None  # 标记是否使用自己创建的app
         self.active_websockets: Set[WebSocket] = set()
         self.platform_websockets: Dict[str, WebSocket] = {}  # 平台到websocket的映射
         self.valid_tokens: Set[str] = set()
@@ -79,11 +88,14 @@ class MessageServer(BaseMessageHandler):
         self.valid_tokens.discard(token)
 
     def _setup_routes(self):
-        @self.app.websocket("/ws")
+        """设置WebSocket路由"""
+
+        # 使用传入的path作为WebSocket endpoint
+        @self.app.websocket(self.path)
         async def websocket_endpoint(websocket: WebSocket):
             headers = dict(websocket.headers)
             token = headers.get("authorization")
-            platform = headers.get("platform", "default")  # 获取platform标识
+            platform = headers.get("platform", "default")
             if self.enable_token:
                 if not token or not await self.verify_token(token):
                     await websocket.close(code=1008, reason="Invalid or missing token")
@@ -148,19 +160,33 @@ class MessageServer(BaseMessageHandler):
 
     def run_sync(self):
         """同步方式运行服务器"""
+        if not self.own_app:
+            raise RuntimeError("当使用外部FastAPI实例时，请使用该实例的运行方法")
         uvicorn.run(self.app, host=self.host, port=self.port)
 
     async def run(self):
         """异步方式运行服务器"""
-        config = uvicorn.Config(
-            self.app, host=self.host, port=self.port, loop="asyncio"
-        )
-        self.server = uvicorn.Server(config)
+        self._running = True
         try:
-            await self.server.serve()
-        except KeyboardInterrupt as e:
+            if self.own_app:
+                # 如果使用自己的 FastAPI 实例，运行 uvicorn 服务器
+                config = uvicorn.Config(
+                    self.app, host=self.host, port=self.port, loop="asyncio"
+                )
+                self.server = uvicorn.Server(config)
+                await self.server.serve()
+            else:
+                # 如果使用外部 FastAPI 实例，保持运行状态以处理消息
+                while self._running:
+                    await asyncio.sleep(1)
+        except KeyboardInterrupt:
             await self.stop()
-            raise KeyboardInterrupt from e
+            raise
+        except Exception as e:
+            await self.stop()
+            raise RuntimeError(f"服务器运行错误: {str(e)}") from e
+        finally:
+            await self.stop()
 
     async def start_server(self):
         """启动服务器的异步方法"""
@@ -185,7 +211,7 @@ class MessageServer(BaseMessageHandler):
             await websocket.close()
         self.active_websockets.clear()
 
-        if hasattr(self, "server"):
+        if hasattr(self, "server") and self.own_app:
             self._running = False
             # 正确关闭 uvicorn 服务器
             self.server.should_exit = True
