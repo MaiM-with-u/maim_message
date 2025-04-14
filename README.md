@@ -143,8 +143,6 @@ from maim_message import (
     TargetConfig,
 )
 
-
-
 # 配置路由config 
 # 从RouteConfig类构建route_config实例
 route_config = RouteConfig( 
@@ -198,6 +196,7 @@ async def message_handler(message):
     从mmc发来的消息将会进入此函数
     你需要解析消息，并且向指定平台捏造合适的消息发送
     如将mmc的MessageBase消息转换为onebotV11协议消息发送到QQ
+    或者根据其他协议发送到其他平台
     """
     print(f"收到消息: {message}")
 
