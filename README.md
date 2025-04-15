@@ -63,7 +63,7 @@ def construct_message(platform):
     user_info = UserInfo(
         # 必填
         platform=platform,
-        user_id=12348765,
+        user_id='12348765',
         # 选填
         user_nickname="maimai",
         user_cardname="mai god",
@@ -72,7 +72,7 @@ def construct_message(platform):
     group_info = GroupInfo(
         # 必填
         platform=platform,  # platform请务必保持一致
-        group_id=12345678,
+        group_id='12345678',
         # 选填
         group_name="aaabbb",
     )
@@ -100,7 +100,7 @@ def construct_message(platform):
         # 必填
         platform=platform,
         message_id="12345678",  # 只会在reply和撤回消息等功能下启用，且可以不保证unique
-        time=1234567,  # 时间戳
+        time=1234567.001,  # 时间戳
         group_info=group_info,
         user_info=user_info,
         # 选填和暂未启用

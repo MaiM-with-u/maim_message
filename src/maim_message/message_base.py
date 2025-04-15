@@ -48,7 +48,7 @@ class GroupInfo:
     """群组信息类"""
 
     platform: Optional[str] = None
-    group_id: Optional[int] = None
+    group_id: Optional[str] = None
     group_name: Optional[str] = None  # 群名称
 
     def to_dict(self) -> Dict:
@@ -79,7 +79,7 @@ class UserInfo:
     """用户信息类"""
 
     platform: Optional[str] = None
-    user_id: Optional[int] = None
+    user_id: Optional[str] = None
     user_nickname: Optional[str] = None  # 用户昵称
     user_cardname: Optional[str] = None  # 用户群昵称
 
@@ -114,8 +114,8 @@ class FormatInfo:
     可发送的格式为text,emoji,reply
     """
 
-    content_format: Optional[str] = None
-    accept_format: Optional[str] = None
+    content_format: Optional[List["str"]] = None
+    accept_format: Optional[List["str"]] = None
 
     def to_dict(self) -> Dict:
         """转换为字典格式"""
@@ -139,8 +139,8 @@ class FormatInfo:
 class TemplateInfo:
     """模板信息类"""
 
-    template_items: Optional[List[Dict]] = None
-    template_name: Optional[str] = None
+    template_items: Optional[Dict[str, str]] = None
+    template_name: Optional[Dict[str, str]] = None
     template_default: bool = True
 
     def to_dict(self) -> Dict:
@@ -167,8 +167,8 @@ class BaseMessageInfo:
     """消息信息类"""
 
     platform: Optional[str] = None
-    message_id: Union[str, int, None] = None
-    time: Optional[int] = None
+    message_id: Optional[str] = None
+    time: Optional[float] = None
     group_info: Optional[GroupInfo] = None
     user_info: Optional[UserInfo] = None
     format_info: Optional[FormatInfo] = None

@@ -5,9 +5,9 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="maim_message",
-    version="0.1.0",
+    version="0.2.0",
     author="tcmofashi",
-    url='https://github.com/MaiM-with-u/maim_message',
+    url="https://github.com/MaiM-with-u/maim_message",
     author_email="mofashiforzbx@qq.com",
     description="A message handling library for maimcore",
     long_description_content_type="text/markdown",
