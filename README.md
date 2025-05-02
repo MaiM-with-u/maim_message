@@ -25,6 +25,52 @@ cd maim_message
 pip install -e .
 ```
 
+最新版支持特性
+
+1. 增加wss支持，在构造服务器时填写合适的crt和key即可，访问时在route_config填写ssl_verify字段为crt。
+   ```python
+   # 服务端这样写
+   server = MessageServer(
+        host="0.0.0.0",
+        port=8090,
+        ssl_certfile="./ssl/server.crt",
+        ssl_keyfile="./ssl/server.key",
+        mode="ws",
+    )
+    # 客户端这样写
+    route_config = RouteConfig(
+    route_config={
+        "qq123": TargetConfig(
+            url="wss://127.0.0.1:8090/ws",  # 使用wss协议
+            token=None,  # 如果需要token验证则在这里设置
+            ssl_verify=os.path.join(
+                os.path.dirname(__file__), "ssl", "server.crt"
+            ),  # SSL验证证书
+        )
+    }
+    )
+   ```
+2. 增加实验性的纯tcp支持，在构造服务器时填写mode='tcp'即可，此时url变更为tcp://host:port
+   ```python
+   server = MessageServer(
+        host="0.0.0.0",
+        port=8090,
+        mode="tcp",  # 使用 TCP 模式
+    )
+    route_config = RouteConfig(
+    route_config={
+            "platform1": TargetConfig(
+                url="tcp://127.0.0.1:8090",  # 本地测试服务器
+                token=None,
+                ssl_verify=None,
+            )
+        }
+    )
+
+
+   ```
+
+
 
 ## 核心概念
 
@@ -90,7 +136,7 @@ async def handle_response_from_maimcore(message: MessageBase):
 router.register_class_handler(handle_response_from_maimcore)
 
 # 5. 构造要发送给 MaimCore 的消息
-def construct_message_to_maimcore(platform_name: str, user_id: int, group_id: int, text_content: str) -> MessageBase:
+def construct_message_to_maimcore(platform_name: str, user_id: str, group_id: str, text_content: str) -> MessageBase:
     """根据平台事件构造标准 MessageBase"""
     user_info = UserInfo(platform=platform_name, user_id=user_id)
     group_info = GroupInfo(platform=platform_name, group_id=group_id)
@@ -122,8 +168,8 @@ async def run_client():
     platform_id = "my_platform_instance_1"
     msg_to_send = construct_message_to_maimcore(
         platform_name=platform_id,
-        user_id=12345,
-        group_id=98765,
+        user_id="12345",
+        group_id="98765",
         text_content="你好 MaimCore！"
     )
     print(f"向 {platform_id} 发送消息...")

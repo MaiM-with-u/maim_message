@@ -18,4 +18,5 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-others/
+others/test.py
+others/ssl/

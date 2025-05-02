@@ -10,13 +10,18 @@ import asyncio
 class TargetConfig:
     url: str = None
     token: Optional[str] = None
+    ssl_verify: Optional[str] = None  # SSL证书路径，用于验证服务器证书
 
     def to_dict(self) -> Dict:
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: Dict) -> "TargetConfig":
-        return cls(url=data.get("url"), token=data.get("token"))
+        return cls(
+            url=data.get("url"),
+            token=data.get("token"),
+            ssl_verify=data.get("ssl_verify"),
+        )
 
 
 @dataclass
@@ -48,7 +53,11 @@ class Router:
         while self._running:
             for platform in list(self.clients.keys()):
                 client = self.clients[platform]
-                if not client.remote_ws_connected:
+                # 根据不同模式检查连接状态
+                if (client.mode == "ws" and not client.remote_ws_connected) or (
+                    client.mode == "tcp"
+                    and (not client.tcp_client or not client.tcp_client._running)
+                ):
                     print(f"检测到平台 {platform} 连接断开，尝试重连...")
                     await self._reconnect_platform(platform)
             await asyncio.sleep(5)  # 每5秒检查一次
@@ -96,8 +105,17 @@ class Router:
             raise ValueError(f"未找到平台配置: {platform}")
 
         config = self.config.route_config[platform]
-        client = MessageClient()
-        await client.connect(config.url, platform, config.token)
+
+        # 根据URL协议决定使用哪种模式
+        mode = "tcp" if config.url.startswith(("tcp://", "tcps://")) else "ws"
+        client = MessageClient(mode=mode)
+
+        await client.connect(
+            url=config.url,
+            platform=platform,
+            token=config.token,
+            ssl_verify=config.ssl_verify,
+        )
         self.clients[platform] = client
 
         if self._running:
@@ -116,15 +134,18 @@ class Router:
             self._monitor_task = asyncio.create_task(self._monitor_connections())
 
             # 等待运行状态改变
+            # try:
             while self._running:
                 await asyncio.sleep(1)
+            # except asyncio.CancelledError:
+            #     pass
 
-        except asyncio.CancelledError:
+        except (
+            asyncio.CancelledError,
+            KeyboardInterrupt,
+        ):
             await self.stop()
-        finally:
-            if self._monitor_task:
-                self._monitor_task.cancel()
-                await asyncio.gather(self._monitor_task, return_exceptions=True)
+            raise
 
     async def stop(self):
         """停止所有客户端"""
@@ -169,12 +190,21 @@ class Router:
         platform = message.message_info.platform
         if url is None:
             raise ValueError(f"不存在该平台url配置: {platform}")
-        if platform not in self.clients.keys():
-            client = MessageClient()
+        # print(f"发送消息到 {platform} 的 URL: {url}")
+
+        if platform not in self.clients:
+            config = self.config.route_config[platform]
+            # 根据URL协议决定使用哪种模式
+            mode = "tcp" if config.url.startswith(("tcp://", "tcps://")) else "ws"
+            client = MessageClient(mode=mode)
             await client.connect(
-                url, platform, self.config.route_config[platform].token
+                url=config.url,
+                platform=platform,
+                token=config.token,
+                ssl_verify=config.ssl_verify,
             )
             self.clients[platform] = client
+
         await self.clients[platform].send_message(message.to_dict())
 
     async def _adjust_connections(self, new_config: RouteConfig):

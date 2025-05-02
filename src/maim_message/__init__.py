@@ -1,6 +1,6 @@
 """Maim Message - A message handling library"""
 
-__version__ = "0.1.0"
+__version__ = "0.3.0"
 
 from .api import MessageClient, MessageServer
 from .router import Router, RouteConfig, TargetConfig
