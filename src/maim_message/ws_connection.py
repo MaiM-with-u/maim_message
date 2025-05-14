@@ -55,6 +55,8 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
 
         # 设置WebSocket路由
         self._setup_routes()
+        global logger
+        logger = get_logger()
 
     def _setup_routes(self):
         """设置WebSocket路由"""
@@ -133,6 +135,11 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
         """异步方式启动服务器"""
         self._running = True
 
+        # 如果使用外部应用，只需设置标志位，不启动uvicorn
+        if not self.own_app:
+            logger.info("使用外部FastAPI应用，仅注册WebSocket路由")
+            return
+
         # 获取当前日志级别
         log_level = get_logger().level
 
@@ -159,7 +166,9 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
     def run_sync(self):
         """同步方式运行服务器"""
         if not self.own_app:
-            raise RuntimeError("使用外部应用时不能同步运行服务器")
+            logger.info("使用外部FastAPI应用，仅注册WebSocket路由")
+            self._running = True
+            return
 
         # 获取当前日志级别
         log_level = get_logger().level
@@ -209,8 +218,8 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
         # 清理后台任务
         await self.cleanup_tasks()
 
-        # 关闭服务器
-        if self.server and hasattr(self.server, "shutdown"):
+        # 仅当使用内部应用且服务器实例存在时尝试关闭服务器
+        if self.own_app and self.server and hasattr(self.server, "shutdown"):
             await self.server.shutdown()
 
     async def broadcast_message(self, message: Dict[str, Any]):
@@ -380,6 +389,7 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
                     if msg.type == aiohttp.WSMsgType.TEXT:
                         try:
                             data = msg.json()
+                            logger.debug(f"接收到消息: {data}")
                             task = asyncio.create_task(self.process_message(data))
                             self.add_background_task(task)
                         except Exception as e:

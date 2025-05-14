@@ -91,8 +91,6 @@ class MessageServer(BaseMessageHandler):
         # 设置日志
         if custom_logger:
             setup_logger(external_logger=custom_logger)
-        else:
-            setup_logger(level=log_level)
 
         self.host = host
         self.port = port

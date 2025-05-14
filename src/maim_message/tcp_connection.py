@@ -40,6 +40,8 @@ class BaseTCPConnection(BaseConnection):
         super().__init__()
         self.crypto = CryptoManager()
         self._sequence = 0
+        global logger
+        logger = get_logger()
 
     async def _read_frame(self, reader: asyncio.StreamReader) -> Tuple[int, bytes]:
         """读取一个完整的消息帧"""

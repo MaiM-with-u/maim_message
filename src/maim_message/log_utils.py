@@ -32,18 +32,18 @@ def setup_logger(
     if external_logger:
         _logger = external_logger
         # 确保外部logger至少具有指定的日志级别
-        if isinstance(level, str):
-            level = getattr(logging, level.upper())
-        if _logger.level > level:
-            _logger.setLevel(level)
+        # if isinstance(level, str):
+        #     level = getattr(logging, level.upper())
+        # if _logger.level > level:
+        #     _logger.setLevel(level)
         return _logger
 
     if _logger is not None:
         # 如果已有logger，可能需要更新日志级别
-        if isinstance(level, str):
-            level = getattr(logging, level.upper())
-        if _logger.level > level:
-            _logger.setLevel(level)
+        # if isinstance(level, str):
+        #     level = getattr(logging, level.upper())
+        # if _logger.level > level:
+        #     _logger.setLevel(level)
         return _logger
 
     # 创建新的日志记录器
