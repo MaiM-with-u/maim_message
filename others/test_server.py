@@ -31,8 +31,8 @@ if __name__ == "__main__":
     server = MessageServer(
         host="0.0.0.0",
         port=8090,
-        ssl_certfile="./ssl/server.crt",
-        ssl_keyfile="./ssl/server.key",
+        # ssl_certfile="./ssl/server.crt",
+        # ssl_keyfile="./ssl/server.key",
         mode="ws",
     )
 

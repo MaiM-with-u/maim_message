@@ -1,9 +1,16 @@
-from typing import Optional, Dict, Any, Callable, List, Set
+"""
+重构后的路由模块，使用统一的通信接口
+"""
+
+from typing import Optional, Dict, Callable, List, Union
 from dataclasses import dataclass, asdict
+import asyncio
+import logging
 from .message_base import MessageBase
 from .api import MessageClient
-from fastapi import WebSocket
-import asyncio
+from .log_utils import get_logger, setup_logger
+
+logger = get_logger()
 
 
 @dataclass
@@ -40,9 +47,21 @@ class RouteConfig:
 
 
 class Router:
-    def __init__(self, config: RouteConfig):
+    def __init__(
+        self,
+        config: RouteConfig,
+        log_level: Union[int, str] = logging.INFO,
+        custom_logger: Optional[logging.Logger] = None,
+    ):
+        # 设置日志
+        if custom_logger:
+            setup_logger(external_logger=custom_logger)
+        else:
+            setup_logger(level=log_level)
+
         self.config = config
         self.clients: Dict[str, MessageClient] = {}
+        self.handlers: List[Callable] = []
         self._running = False
         self._client_tasks: Dict[str, asyncio.Task] = {}
         self._monitor_task = None
@@ -52,13 +71,10 @@ class Router:
         await asyncio.sleep(3)  # 等待初始连接建立
         while self._running:
             for platform in list(self.clients.keys()):
-                client = self.clients[platform]
-                # 根据不同模式检查连接状态
-                if (client.mode == "ws" and not client.remote_ws_connected) or (
-                    client.mode == "tcp"
-                    and (not client.tcp_client or not client.tcp_client._running)
-                ):
-                    print(f"检测到平台 {platform} 连接断开，尝试重连...")
+                # 检查连接状态
+                client = self.clients.get(platform)
+                if client is None or not client.is_connected():
+                    logger.info(f"检测到平台 {platform} 的连接已断开，正在尝试重新连接")
                     await self._reconnect_platform(platform)
             await asyncio.sleep(5)  # 每5秒检查一次
 
@@ -66,9 +82,9 @@ class Router:
         """重新连接指定平台"""
         if platform in self._client_tasks:
             task = self._client_tasks[platform]
+            await task
             if not task.done():
                 task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
             del self._client_tasks[platform]
 
         if platform in self.clients:
@@ -108,6 +124,7 @@ class Router:
 
         # 根据URL协议决定使用哪种模式
         mode = "tcp" if config.url.startswith(("tcp://", "tcps://")) else "ws"
+        # 创建MessageClient时不需要传入日志配置，因为已经在Router初始化时设置了全局日志
         client = MessageClient(mode=mode)
 
         await client.connect(
@@ -116,6 +133,8 @@ class Router:
             token=config.token,
             ssl_verify=config.ssl_verify,
         )
+        for handler in self.handlers:
+            client.register_message_handler(handler)
         self.clients[platform] = client
 
         if self._running:
@@ -130,15 +149,12 @@ class Router:
                 if platform not in self.clients:
                     await self.connect(platform)
 
-            # 启动连接监控
+            # 启动连接监控任务
             self._monitor_task = asyncio.create_task(self._monitor_connections())
 
             # 等待运行状态改变
-            # try:
             while self._running:
                 await asyncio.sleep(1)
-            # except asyncio.CancelledError:
-            #     pass
 
         except (
             asyncio.CancelledError,
@@ -151,15 +167,20 @@ class Router:
         """停止所有客户端"""
         self._running = False
 
-        # 取消监控任务
+        # 取消连接监控任务
         if self._monitor_task and not self._monitor_task.done():
             self._monitor_task.cancel()
-            await asyncio.gather(self._monitor_task, return_exceptions=True)
+            try:
+                await self._monitor_task
+            except asyncio.CancelledError:
+                pass
+        self._monitor_task = None
 
-        # 先取消所有后台任务
+        # 取消所有客户端任务
         for task in self._client_tasks.values():
             if not task.done():
                 task.cancel()
+            await task
 
         # 等待任务取消完成
         if self._client_tasks:
@@ -176,7 +197,7 @@ class Router:
         self.clients.clear()
 
     def register_class_handler(self, handler):
-        MessageClient.register_class_handler(handler)
+        self.handlers.append(handler)
 
     def get_target_url(self, message: MessageBase):
         platform = message.message_info.platform
@@ -190,22 +211,15 @@ class Router:
         platform = message.message_info.platform
         if url is None:
             raise ValueError(f"不存在该平台url配置: {platform}")
-        # print(f"发送消息到 {platform} 的 URL: {url}")
+        # 发送消息
+        return await self.clients[platform].send_message(message.to_dict())
 
-        if platform not in self.clients:
-            config = self.config.route_config[platform]
-            # 根据URL协议决定使用哪种模式
-            mode = "tcp" if config.url.startswith(("tcp://", "tcps://")) else "ws"
-            client = MessageClient(mode=mode)
-            await client.connect(
-                url=config.url,
-                platform=platform,
-                token=config.token,
-                ssl_verify=config.ssl_verify,
-            )
-            self.clients[platform] = client
-
-        await self.clients[platform].send_message(message.to_dict())
+    async def update_config(self, config_data: Dict):
+        """更新路由配置并动态调整连接"""
+        new_config = RouteConfig.from_dict(config_data)
+        if self._running:
+            await self._adjust_connections(new_config)
+        self.config = new_config
 
     async def _adjust_connections(self, new_config: RouteConfig):
         """根据新配置调整连接"""
@@ -233,9 +247,18 @@ class Router:
                 # 新增平台
                 await self.add_platform(platform, new_target)
 
-    async def update_config(self, config_data: Dict):
-        """更新路由配置并动态调整连接"""
-        new_config = RouteConfig.from_dict(config_data)
-        if self._running:
-            await self._adjust_connections(new_config)
-        self.config = new_config
+    def check_connection(self, platform: str) -> bool:
+        """
+        检查指定平台的连接状态
+
+        Args:
+            platform: 平台标识符
+
+        Returns:
+            bool: 连接是否有效
+        """
+        if platform not in self.clients:
+            return False
+
+        client = self.clients.get(platform)
+        return client is not None and client.is_connected()

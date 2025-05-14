@@ -33,11 +33,18 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=8090,
         mode="tcp",  # 使用 TCP 模式
+        enable_token=True,  # 启用令牌认证
+        log_level="DEBUG",  # 设置日志级别
     )
+
+    # 添加有效令牌
+    server.add_valid_token("test_token_1")
+    server.add_valid_token("test_token_2")
 
     # 注册消息处理器
     server.register_message_handler(handle_message)
 
     print("TCP 服务器启动在 tcp://0.0.0.0:8090")
+    print("已启用令牌认证，有效令牌: test_token_1, test_token_2")
     # 运行服务器
     asyncio.run(server.run())
