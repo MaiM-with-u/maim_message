@@ -40,6 +40,7 @@ class BaseTCPConnection(BaseConnection):
         super().__init__()
         self.crypto = CryptoManager()
         self._sequence = 0
+        # 获取最新的logger实例
         global logger
         logger = get_logger()
 
@@ -128,6 +129,10 @@ class TCPServerConnection(BaseTCPConnection, ServerConnectionInterface):
 
     async def start(self):
         """启动服务器"""
+        # 获取最新的logger引用
+        global logger
+        logger = get_logger()
+
         self._running = True
         self._server = await asyncio.start_server(
             self._handle_client, self.host, self.port
@@ -392,6 +397,10 @@ class TCPClientConnection(BaseTCPConnection, ClientConnectionInterface):
 
     async def connect(self) -> bool:
         """连接到服务器"""
+        # 获取最新的logger引用
+        global logger
+        logger = get_logger()
+
         if not self.host or not self.port:
             logger.error("连接前必须先调用set_target方法设置目标服务器")
             return False
@@ -441,6 +450,10 @@ class TCPClientConnection(BaseTCPConnection, ClientConnectionInterface):
 
     async def start(self):
         """开始接收消息循环"""
+        # 获取最新的logger引用
+        global logger
+        logger = get_logger()
+
         if not self.writer:
             success = await self.connect()
             if not success:
@@ -538,6 +551,10 @@ class TCPClientConnection(BaseTCPConnection, ClientConnectionInterface):
 
     async def _heartbeat(self):
         """发送心跳包"""
+        # 更新logger引用
+        global logger
+        logger = get_logger()
+
         while self._running:
             try:
                 await asyncio.sleep(15)  # 每15秒发送一次心跳

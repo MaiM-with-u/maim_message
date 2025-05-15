@@ -56,6 +56,11 @@ class Router:
         # 设置日志
         if custom_logger:
             setup_logger(external_logger=custom_logger)
+        else:
+            setup_logger(level=log_level)
+        # 更新全局logger引用
+        global logger
+        logger = get_logger()
 
         self.config = config
         self.clients: Dict[str, MessageClient] = {}
@@ -140,6 +145,10 @@ class Router:
 
     async def run(self):
         """运行所有客户端连接"""
+        # 获取最新的logger引用
+        global logger
+        logger = get_logger()
+
         self._running = True
         try:
             # 初始化所有平台的连接
@@ -231,6 +240,9 @@ class Router:
 
         # 需要更新或添加的平台
         for platform in new_platforms:
+            # 确保在操作前获取最新的logger引用
+            global logger
+            logger = get_logger()
             new_target = new_config.route_config[platform]
             if platform in self.config.route_config:
                 old_target = self.config.route_config[platform]

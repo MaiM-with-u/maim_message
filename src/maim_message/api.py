@@ -91,6 +91,9 @@ class MessageServer(BaseMessageHandler):
         # 设置日志
         if custom_logger:
             setup_logger(external_logger=custom_logger)
+        # 更新全局logger引用
+        global logger
+        logger = get_logger()
 
         self.host = host
         self.port = port
@@ -159,6 +162,10 @@ class MessageServer(BaseMessageHandler):
 
     async def run(self):
         """异步方式运行服务器"""
+        # 获取最新的logger引用
+        global logger
+        logger = get_logger()
+
         self._running = True
         try:
             await self.connection.start()
@@ -211,6 +218,9 @@ class MessageClient(BaseMessageHandler):
             setup_logger(external_logger=custom_logger)
         else:
             setup_logger(level=log_level)
+        # 更新全局logger引用
+        global logger
+        logger = get_logger()
 
         self.mode = mode
         self.platform = None
@@ -263,6 +273,10 @@ class MessageClient(BaseMessageHandler):
 
     async def run(self):
         """维持连接和消息处理"""
+        # 获取最新的logger引用
+        global logger
+        logger = get_logger()
+
         if not hasattr(self, "connection"):
             raise RuntimeError("请先调用connect方法连接到服务器")
 

@@ -55,6 +55,7 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
 
         # 设置WebSocket路由
         self._setup_routes()
+        # 获取最新的logger实例
         global logger
         logger = get_logger()
 
@@ -133,6 +134,10 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
 
     async def start(self):
         """异步方式启动服务器"""
+        # 获取最新的logger引用
+        global logger
+        logger = get_logger()
+
         self._running = True
 
         # 如果使用外部应用，只需设置标志位，不启动uvicorn
@@ -291,6 +296,10 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
 
     async def connect(self) -> bool:
         """连接到WebSocket服务器"""
+        # 获取最新的logger引用
+        global logger
+        logger = get_logger()
+
         if not self.url or not self.platform:
             raise ValueError("连接前必须先调用configure方法配置连接参数")
 
@@ -365,6 +374,10 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
 
     async def start(self):
         """开始接收消息循环"""
+        # 获取最新的logger引用
+        global logger
+        logger = get_logger()
+
         if not self.ws_connected:
             await self.connect()
 
