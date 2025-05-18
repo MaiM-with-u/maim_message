@@ -80,7 +80,7 @@ route_config = RouteConfig(
 )
 
 # 创建路由器实例
-router = Router(route_config, log_level="DEBUG")
+router = Router(route_config)
 
 
 async def main():

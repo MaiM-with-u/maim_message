@@ -4,7 +4,7 @@
 
 import asyncio
 import logging
-from typing import Dict, Any, Callable, List, Optional, Literal, Union
+from typing import Dict, Any, Callable, List, Optional, Literal
 
 from .message_base import MessageBase
 from .ws_connection import WebSocketServer, WebSocketClient
@@ -84,7 +84,6 @@ class MessageServer(BaseMessageHandler):
         ssl_certfile: Optional[str] = None,
         ssl_keyfile: Optional[str] = None,
         mode: Literal["ws", "tcp"] = "ws",
-        log_level: Union[int, str] = logging.INFO,
         custom_logger: Optional[logging.Logger] = None,
     ):
         super().__init__()
@@ -209,15 +208,12 @@ class MessageClient(BaseMessageHandler):
     def __init__(
         self,
         mode: Literal["ws", "tcp"] = "ws",
-        log_level: Union[int, str] = logging.INFO,
         custom_logger: Optional[logging.Logger] = None,
     ):
         super().__init__()
         # 设置日志
         if custom_logger:
             setup_logger(external_logger=custom_logger)
-        else:
-            setup_logger(level=log_level)
         # 更新全局logger引用
         global logger
         logger = get_logger()

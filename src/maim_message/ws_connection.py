@@ -145,11 +145,8 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
             logger.info("使用外部FastAPI应用，仅注册WebSocket路由")
             return
 
-        # 获取当前日志级别
-        log_level = get_logger().level
-
         # 为uvicorn准备日志配置
-        log_config = get_uvicorn_log_config(log_level)
+        log_config = get_uvicorn_log_config()
 
         # 配置服务器
         config = uvicorn.Config(
@@ -162,7 +159,7 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
         )
 
         # 确保uvicorn日志系统使用我们的配置
-        configure_uvicorn_logging(log_level)
+        configure_uvicorn_logging()
 
         # 启动服务器
         self.server = uvicorn.Server(config)
@@ -175,11 +172,8 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
             self._running = True
             return
 
-        # 获取当前日志级别
-        log_level = get_logger().level
-
         # 为uvicorn准备日志配置
-        log_config = get_uvicorn_log_config(log_level)
+        log_config = get_uvicorn_log_config()
 
         # 打印SSL配置信息
         if self.ssl_certfile and self.ssl_keyfile:
@@ -198,7 +192,7 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
         )
 
         # 确保uvicorn日志系统使用我们的配置
-        configure_uvicorn_logging(log_level)
+        configure_uvicorn_logging()
 
         server = uvicorn.Server(config)
         server.run()

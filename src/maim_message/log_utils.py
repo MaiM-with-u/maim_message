@@ -1,6 +1,6 @@
 import logging
 import sys
-from typing import Optional, Union
+from typing import Optional
 
 # 默认日志格式
 DEFAULT_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -11,7 +11,6 @@ _logger = None
 
 def setup_logger(
     name: str = "maim_message",
-    level: Union[int, str] = logging.INFO,
     format_str: str = DEFAULT_FORMAT,
     external_logger: Optional[logging.Logger] = None,
 ) -> logging.Logger:
@@ -20,7 +19,6 @@ def setup_logger(
 
     Args:
         name: 日志记录器名称
-        level: 日志级别
         format_str: 日志格式
         external_logger: 外部提供的日志记录器
 
@@ -31,28 +29,16 @@ def setup_logger(
 
     if external_logger:
         _logger = external_logger
-        # 确保外部logger至少具有指定的日志级别
-        # if isinstance(level, str):
-        #     level = getattr(logging, level.upper())
-        # if _logger.level > level:
-        #     _logger.setLevel(level)
         return _logger
 
     if _logger is not None:
-        # 如果已有logger，可能需要更新日志级别
-        # if isinstance(level, str):
-        #     level = getattr(logging, level.upper())
-        # if _logger.level > level:
-        #     _logger.setLevel(level)
         return _logger
 
     # 创建新的日志记录器
     logger = logging.getLogger(name)
 
-    # 设置日志级别
-    if isinstance(level, str):
-        level = getattr(logging, level.upper())
-    logger.setLevel(level)
+    # 使用默认INFO级别
+    logger.setLevel(logging.INFO)
 
     # 创建处理器和格式化器
     if not logger.handlers:
@@ -78,24 +64,16 @@ def get_logger() -> logging.Logger:
     return _logger
 
 
-def set_external_logger(
-    external_logger: logging.Logger, level: Optional[Union[int, str]] = None
-):
+def set_external_logger(external_logger: logging.Logger):
     """
     设置外部日志记录器作为全局日志记录器。这是外部系统集成的首选方法。
 
     Args:
         external_logger: 外部提供的日志记录器
-        level: 可选的日志级别，如果提供则会覆盖外部日志记录器的级别
 
     Returns:
         已设置的日志记录器
     """
-    if level is not None:
-        if isinstance(level, str):
-            level = getattr(logging, level.upper())
-        external_logger.setLevel(level)
-
     return setup_logger(external_logger=external_logger)
 
 
@@ -107,20 +85,13 @@ def reset_logger():
     _logger = None
 
 
-def configure_uvicorn_logging(level: Union[int, str] = None):
+def configure_uvicorn_logging():
     """
     配置uvicorn日志系统以使用我们的日志设置
-
-    Args:
-        level: 日志级别，如果不提供则使用当前的日志级别
     """
     # 获取当前日志级别
-    if level is None:
-        current_logger = get_logger()
-        level = current_logger.level
-
-    if isinstance(level, str):
-        level = getattr(logging, level.upper())
+    current_logger = get_logger()
+    level = current_logger.level
 
     # 获取或创建一个格式化器
     current_logger = get_logger()
@@ -156,20 +127,16 @@ def configure_uvicorn_logging(level: Union[int, str] = None):
     return True
 
 
-def get_uvicorn_log_config(level: Union[int, str] = None) -> dict:
+def get_uvicorn_log_config() -> dict:
     """
     获取适用于uvicorn的日志配置字典
-
-    Args:
-        level: 日志级别，如果不提供则使用当前的日志级别
 
     Returns:
         uvicorn日志配置字典
     """
     # 获取当前日志级别
-    if level is None:
-        current_logger = get_logger()
-        level = current_logger.level
+    current_logger = get_logger()
+    level = current_logger.level
 
     # 将日志级别转换为uvicorn可接受的字符串格式
     if isinstance(level, int):

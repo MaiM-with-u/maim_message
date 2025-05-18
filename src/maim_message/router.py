@@ -2,7 +2,7 @@
 重构后的路由模块，使用统一的通信接口
 """
 
-from typing import Optional, Dict, Callable, List, Union
+from typing import Optional, Dict, Callable, List
 from dataclasses import dataclass, asdict
 import asyncio
 import logging
@@ -50,14 +50,11 @@ class Router:
     def __init__(
         self,
         config: RouteConfig,
-        log_level: Union[int, str] = logging.INFO,
         custom_logger: Optional[logging.Logger] = None,
     ):
         # 设置日志
         if custom_logger:
             setup_logger(external_logger=custom_logger)
-        else:
-            setup_logger(level=log_level)
         # 更新全局logger引用
         global logger
         logger = get_logger()

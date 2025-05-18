@@ -34,7 +34,6 @@ if __name__ == "__main__":
         port=8090,
         mode="tcp",  # 使用 TCP 模式
         enable_token=True,  # 启用令牌认证
-        log_level="DEBUG",  # 设置日志级别
     )
 
     # 添加有效令牌
