@@ -32,6 +32,7 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
         ssl_certfile: Optional[str] = None,
         ssl_keyfile: Optional[str] = None,
         enable_token: bool = False,
+        enable_custom_uvicorn_logger: Optional[bool] = False,
     ):
         super().__init__()
         self.host = host
@@ -41,6 +42,7 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
         self.own_app = app is None
         self.ssl_certfile = ssl_certfile
         self.ssl_keyfile = ssl_keyfile
+        self.enable_custom_uvicorn_logger = enable_custom_uvicorn_logger
 
         # WebSocket连接管理
         self.active_websockets: Set[WebSocket] = set()
@@ -145,25 +147,50 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
             logger.info("使用外部FastAPI应用，仅注册WebSocket路由")
             return
 
-        # 为uvicorn准备日志配置
-        log_config = get_uvicorn_log_config()
+        # 验证SSL证书文件是否存在
+        if self.ssl_certfile and self.ssl_keyfile:
+            import os
+
+            if not os.path.exists(self.ssl_certfile):
+                logger.error(f"SSL证书文件不存在: {self.ssl_certfile}")
+                raise FileNotFoundError(f"SSL证书文件不存在: {self.ssl_certfile}")
+            if not os.path.exists(self.ssl_keyfile):
+                logger.error(f"SSL密钥文件不存在: {self.ssl_keyfile}")
+                raise FileNotFoundError(f"SSL密钥文件不存在: {self.ssl_keyfile}")
+            logger.info(
+                f"已验证SSL文件: certfile={self.ssl_certfile}, keyfile={self.ssl_keyfile}"
+            )
 
         # 配置服务器
-        config = uvicorn.Config(
-            self.app,
-            host=self.host,
-            port=self.port,
-            ssl_certfile=self.ssl_certfile,
-            ssl_keyfile=self.ssl_keyfile,
-            log_config=log_config,
-        )
-
-        # 确保uvicorn日志系统使用我们的配置
-        configure_uvicorn_logging()
+        # 为uvicorn准备日志配置
+        if self.enable_custom_uvicorn_logger:
+            log_config = get_uvicorn_log_config()
+            config = uvicorn.Config(
+                self.app,
+                host=self.host,
+                port=self.port,
+                ssl_certfile=self.ssl_certfile,
+                ssl_keyfile=self.ssl_keyfile,
+                log_config=log_config,
+            )
+            # 确保uvicorn日志系统使用我们的配置
+            configure_uvicorn_logging()
+        else:
+            config = uvicorn.Config(
+                self.app,
+                host=self.host,
+                port=self.port,
+                ssl_certfile=self.ssl_certfile,
+                ssl_keyfile=self.ssl_keyfile,
+            )
 
         # 启动服务器
         self.server = uvicorn.Server(config)
-        await self.server.serve()
+        try:
+            await self.server.serve()
+        except Exception as e:
+            logger.error(f"服务器启动失败: {e}")
+            raise
 
     def run_sync(self):
         """同步方式运行服务器"""
@@ -172,30 +199,49 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
             self._running = True
             return
 
-        # 为uvicorn准备日志配置
-        log_config = get_uvicorn_log_config()
-
-        # 打印SSL配置信息
+        # 验证并打印SSL配置信息
         if self.ssl_certfile and self.ssl_keyfile:
+            import os
+
+            if not os.path.exists(self.ssl_certfile):
+                logger.error(f"SSL证书文件不存在: {self.ssl_certfile}")
+                raise FileNotFoundError(f"SSL证书文件不存在: {self.ssl_certfile}")
+            if not os.path.exists(self.ssl_keyfile):
+                logger.error(f"SSL密钥文件不存在: {self.ssl_keyfile}")
+                raise FileNotFoundError(f"SSL密钥文件不存在: {self.ssl_keyfile}")
             logger.info(
                 f"启用SSL: certfile={self.ssl_certfile}, keyfile={self.ssl_keyfile}"
             )
 
-        # 配置并启动服务器，使用我们的日志配置
-        config = uvicorn.Config(
-            self.app,
-            host=self.host,
-            port=self.port,
-            ssl_certfile=self.ssl_certfile,
-            ssl_keyfile=self.ssl_keyfile,
-            log_config=log_config,
-        )
-
-        # 确保uvicorn日志系统使用我们的配置
-        configure_uvicorn_logging()
+        # 配置服务器
+        # 为uvicorn准备日志配置
+        if self.enable_custom_uvicorn_logger:
+            log_config = get_uvicorn_log_config()
+            config = uvicorn.Config(
+                self.app,
+                host=self.host,
+                port=self.port,
+                ssl_certfile=self.ssl_certfile,
+                ssl_keyfile=self.ssl_keyfile,
+                log_config=log_config,
+            )
+            # 确保uvicorn日志系统使用我们的配置
+            configure_uvicorn_logging()
+        else:
+            config = uvicorn.Config(
+                self.app,
+                host=self.host,
+                port=self.port,
+                ssl_certfile=self.ssl_certfile,
+                ssl_keyfile=self.ssl_keyfile,
+            )
 
         server = uvicorn.Server(config)
-        server.run()
+        try:
+            server.run()
+        except Exception as e:
+            logger.error(f"服务器运行失败: {e}")
+            raise
 
     async def stop(self):
         """停止服务器"""
@@ -218,8 +264,18 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
         await self.cleanup_tasks()
 
         # 仅当使用内部应用且服务器实例存在时尝试关闭服务器
-        if self.own_app and self.server and hasattr(self.server, "shutdown"):
-            await self.server.shutdown()
+        if self.own_app and self.server:
+            try:
+                # 检查server是否有shutdown方法
+                if hasattr(self.server, "shutdown"):
+                    await self.server.shutdown()
+                # 如果没有shutdown方法但有should_exit属性
+                elif hasattr(self.server, "should_exit"):
+                    self.server.should_exit = True
+                    logger.info("已设置服务器退出标志")
+            except Exception as e:
+                logger.warning(f"关闭服务器时发生错误: {e}")
+                # 不抛出异常，让程序能够继续执行其他清理工作
 
     async def broadcast_message(self, message: Dict[str, Any]):
         """广播消息给所有连接的客户端"""

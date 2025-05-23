@@ -89,17 +89,41 @@ def configure_uvicorn_logging():
     """
     配置uvicorn日志系统以使用我们的日志设置
     """
-    # 获取当前日志级别
-    current_logger = get_logger()
-    level = current_logger.level
+    # 获取当前日志级别，默认使用INFO
+    level = logging.INFO
+    disable_all_logs = False
+    
+    try:
+        current_logger = get_logger()
+        
+        # 检测是否是loguru的Logger
+        if hasattr(current_logger, "__class__") and str(current_logger.__class__).find("loguru") >= 0:
+            # loguru Logger的处理，直接使用默认INFO级别
+            pass
+        else:
+            # 标准logging Logger的处理
+            level = getattr(current_logger, "level", logging.INFO)
+            if callable(level) or not isinstance(level, int):
+                disable_all_logs = True
+                level = logging.CRITICAL  # 如果level不是整数，使用CRITICAL级别静默日志
+    except Exception:
+        # 如果出现错误，禁用所有日志
+        disable_all_logs = True
+        level = logging.CRITICAL
+        pass
 
     # 获取或创建一个格式化器
-    current_logger = get_logger()
-    formatter = None
-    if current_logger.handlers:
-        formatter = current_logger.handlers[0].formatter
-    else:
-        formatter = logging.Formatter(DEFAULT_FORMAT)
+    formatter = logging.Formatter(DEFAULT_FORMAT)
+    try:
+        current_logger = get_logger()
+        if hasattr(current_logger, "__class__") and str(current_logger.__class__).find("loguru") >= 0:
+            # loguru Logger不尝试获取formatter
+            pass
+        elif current_logger.handlers:
+            formatter = current_logger.handlers[0].formatter
+    except Exception:
+        # 如果出现错误，使用默认格式化器
+        pass
 
     # 配置uvicorn相关的日志记录器
     loggers = [
@@ -134,37 +158,80 @@ def get_uvicorn_log_config() -> dict:
     Returns:
         uvicorn日志配置字典
     """
-    # 获取当前日志级别
-    current_logger = get_logger()
-    level = current_logger.level
-
-    # 将日志级别转换为uvicorn可接受的字符串格式
-    if isinstance(level, int):
-        if level <= logging.DEBUG:
-            level_name = "DEBUG"
-        elif level <= logging.INFO:
-            level_name = "INFO"
-        elif level <= logging.WARNING:
-            level_name = "WARNING"
-        elif level <= logging.ERROR:
-            level_name = "ERROR"
+    # 获取当前日志级别，设置默认值为INFO
+    default_level_name = "INFO"
+    disable_all_logs = False
+    
+    try:
+        current_logger = get_logger()
+        
+        # 检测是否是loguru的Logger
+        if hasattr(current_logger, "__class__") and str(current_logger.__class__).find("loguru") >= 0:
+            # loguru Logger的处理，直接使用默认INFO级别
+            level_name = default_level_name
         else:
-            level_name = "CRITICAL"
-    else:
-        level_name = level.upper()  # 假设它是一个字符串
+            # 标准logging Logger的处理
+            level = getattr(current_logger, "level", logging.INFO)
+            
+            # 将日志级别转换为uvicorn可接受的字符串格式
+            if isinstance(level, int):
+                if level <= logging.DEBUG:
+                    level_name = "DEBUG"
+                elif level <= logging.INFO:
+                    level_name = "INFO"
+                elif level <= logging.WARNING:
+                    level_name = "WARNING"
+                elif level <= logging.ERROR:
+                    level_name = "ERROR"
+                else:
+                    level_name = "CRITICAL"
+            elif callable(level):
+                # 如果level是一个方法，标记为禁用所有日志
+                disable_all_logs = True
+                level_name = default_level_name
+            else:
+                # 尝试将字符串转换为大写，如果不是字符串则使用默认值
+                try:
+                    level_name = str(level).upper()
+                    # 检查是否包含bound method等无效内容
+                    if "bound method" in level_name or len(level_name) > 30:
+                        disable_all_logs = True
+                        level_name = default_level_name
+                except (AttributeError, TypeError):
+                    disable_all_logs = True
+                    level_name = default_level_name
+    except Exception:
+        # 如果出现任何错误，标记为禁用所有日志
+        disable_all_logs = True
+        level_name = default_level_name
 
     # 从当前记录器获取格式
-    current_logger = get_logger()
     log_format = DEFAULT_FORMAT
-    if current_logger.handlers:
-        formatter = current_logger.handlers[0].formatter
-        if hasattr(formatter, "_fmt"):
-            log_format = formatter._fmt
+    try:
+        current_logger = get_logger()
+        # 检测是否是loguru的Logger
+        if hasattr(current_logger, "__class__") and str(current_logger.__class__).find("loguru") >= 0:
+            # loguru Logger不尝试获取格式，使用默认格式
+            pass
+        elif current_logger.handlers:
+            formatter = current_logger.handlers[0].formatter
+            if hasattr(formatter, "_fmt"):
+                log_format = formatter._fmt
+    except Exception:
+        # 如果出现任何错误，使用默认格式并标记为禁用日志
+        disable_all_logs = True
+        pass
+
+    # 如果需要禁用所有日志输出，将所有日志级别设置为CRITICAL
+    if disable_all_logs:
+        level_name = "CRITICAL"
+        logger = get_logger()
+        logger.info("由于logger配置提取错误，已禁用uvicorn的所有日志输出")
 
     # 返回uvicorn配置
     return {
         "version": 1,
-        "disable_existing_loggers": False,
+        "disable_existing_loggers": True if disable_all_logs else False,
         "formatters": {
             "default": {
                 "format": log_format,
@@ -173,8 +240,8 @@ def get_uvicorn_log_config() -> dict:
         "handlers": {
             "default": {
                 "formatter": "default",
-                "class": "logging.StreamHandler",
-                "stream": sys.stderr,
+                "class": "logging.NullHandler" if disable_all_logs else "logging.StreamHandler",
+                "stream": sys.stderr if not disable_all_logs else None,
             },
         },
         "loggers": {

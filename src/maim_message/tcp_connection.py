@@ -293,8 +293,9 @@ class TCPServerConnection(BaseTCPConnection, ServerConnectionInterface):
 
             elif frame_type == FrameType.HEARTBEAT:
                 # 回复心跳
-                heartbeat_frame = crypto_manager.create_heartbeat_frame()
-                await self._write_frame(writer, heartbeat_frame)
+                await self._write_frame(
+                    writer, crypto_manager.create_frame(FrameType.HEARTBEAT, b"")
+                )
 
         except Exception as e:
             logger.error(f"处理消息时出错: {e}")

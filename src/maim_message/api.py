@@ -85,6 +85,7 @@ class MessageServer(BaseMessageHandler):
         ssl_keyfile: Optional[str] = None,
         mode: Literal["ws", "tcp"] = "ws",
         custom_logger: Optional[logging.Logger] = None,
+        enable_custom_uvicorn_logger: Optional[bool] = False,
     ):
         super().__init__()
         # 设置日志
@@ -109,6 +110,7 @@ class MessageServer(BaseMessageHandler):
                 ssl_certfile=ssl_certfile,
                 ssl_keyfile=ssl_keyfile,
                 enable_token=enable_token,
+                enable_custom_uvicorn_logger=enable_custom_uvicorn_logger,
             )
         else:  # mode == "tcp"
             self.connection = TCPServerConnection(
