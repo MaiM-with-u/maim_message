@@ -92,12 +92,15 @@ def configure_uvicorn_logging():
     # 获取当前日志级别，默认使用INFO
     level = logging.INFO
     disable_all_logs = False
-    
+
     try:
         current_logger = get_logger()
-        
+
         # 检测是否是loguru的Logger
-        if hasattr(current_logger, "__class__") and str(current_logger.__class__).find("loguru") >= 0:
+        if (
+            hasattr(current_logger, "__class__")
+            and str(current_logger.__class__).find("loguru") >= 0
+        ):
             # loguru Logger的处理，直接使用默认INFO级别
             pass
         else:
@@ -116,7 +119,10 @@ def configure_uvicorn_logging():
     formatter = logging.Formatter(DEFAULT_FORMAT)
     try:
         current_logger = get_logger()
-        if hasattr(current_logger, "__class__") and str(current_logger.__class__).find("loguru") >= 0:
+        if (
+            hasattr(current_logger, "__class__")
+            and str(current_logger.__class__).find("loguru") >= 0
+        ):
             # loguru Logger不尝试获取formatter
             pass
         elif current_logger.handlers:
@@ -161,18 +167,21 @@ def get_uvicorn_log_config() -> dict:
     # 获取当前日志级别，设置默认值为INFO
     default_level_name = "INFO"
     disable_all_logs = False
-    
+
     try:
         current_logger = get_logger()
-        
+
         # 检测是否是loguru的Logger
-        if hasattr(current_logger, "__class__") and str(current_logger.__class__).find("loguru") >= 0:
+        if (
+            hasattr(current_logger, "__class__")
+            and str(current_logger.__class__).find("loguru") >= 0
+        ):
             # loguru Logger的处理，直接使用默认INFO级别
             level_name = default_level_name
         else:
             # 标准logging Logger的处理
             level = getattr(current_logger, "level", logging.INFO)
-            
+
             # 将日志级别转换为uvicorn可接受的字符串格式
             if isinstance(level, int):
                 if level <= logging.DEBUG:
@@ -210,7 +219,10 @@ def get_uvicorn_log_config() -> dict:
     try:
         current_logger = get_logger()
         # 检测是否是loguru的Logger
-        if hasattr(current_logger, "__class__") and str(current_logger.__class__).find("loguru") >= 0:
+        if (
+            hasattr(current_logger, "__class__")
+            and str(current_logger.__class__).find("loguru") >= 0
+        ):
             # loguru Logger不尝试获取格式，使用默认格式
             pass
         elif current_logger.handlers:
@@ -240,7 +252,9 @@ def get_uvicorn_log_config() -> dict:
         "handlers": {
             "default": {
                 "formatter": "default",
-                "class": "logging.NullHandler" if disable_all_logs else "logging.StreamHandler",
+                "class": "logging.NullHandler"
+                if disable_all_logs
+                else "logging.StreamHandler",
                 "stream": sys.stderr if not disable_all_logs else None,
             },
         },
