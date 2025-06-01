@@ -97,17 +97,64 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
             try:
                 # 持续处理消息
                 while True:
-                    message = await websocket.receive_json()
-                    task = asyncio.create_task(self.process_message(message))
-                    self.add_background_task(task)
+                    try:
+                        message = await websocket.receive_json()
+                        task = asyncio.create_task(self.process_message(message))
+                        self.add_background_task(task)
+                    except asyncio.TimeoutError:
+                        logger.warning(f"平台 {platform} 接收消息超时")
+                        continue
+                    except ValueError as e:
+                        logger.warning(f"平台 {platform} 接收到无效JSON数据: {e}")
+                        continue
+                    except KeyboardInterrupt:
+                        # 手动中断，静默处理，不记录错误
+                        logger.debug(f"平台 {platform} WebSocket连接因用户中断而关闭")
+                    except asyncio.CancelledError:
+                        # 任务被取消，通常是正常关闭流程
+                        logger.debug(f"平台 {platform} WebSocket任务被取消")
+                    except Exception as e:
+                        error_str = str(e).lower()
+                        if any(
+                            keyword in error_str
+                            for keyword in [
+                                "1012",
+                                "connection",
+                                "closed",
+                                "disconnect",
+                            ]
+                        ):
+                            logger.debug(f"平台 {platform} WebSocket连接关闭: {e}")
+                        else:
+                            logger.error(f"平台 {platform} WebSocket处理错误: {e}")
+                            import traceback
+
+                            logger.debug(traceback.format_exc())
+                        break
 
             except WebSocketDisconnect:
                 logger.info(f"WebSocket连接断开: {platform}")
+            except ConnectionResetError:
+                logger.warning(f"平台 {platform} 连接被重置")
+            except KeyboardInterrupt:
+                # 手动中断，静默处理，不记录错误
+                logger.debug(f"平台 {platform} WebSocket连接因用户中断而关闭")
+            except asyncio.CancelledError:
+                # 任务被取消，通常是正常关闭流程
+                logger.debug(f"平台 {platform} WebSocket任务被取消")
             except Exception as e:
-                logger.error(f"WebSocket处理错误: {e}")
-                import traceback
+                # 检查是否是连接关闭相关的错误
+                error_str = str(e).lower()
+                if any(
+                    keyword in error_str
+                    for keyword in ["1012", "connection", "closed", "disconnect"]
+                ):
+                    logger.debug(f"平台 {platform} WebSocket连接关闭: {e}")
+                else:
+                    logger.error(f"平台 {platform} WebSocket处理错误: {e}")
+                    import traceback
 
-                logger.debug(traceback.format_exc())
+                    logger.debug(traceback.format_exc())
             finally:
                 self._remove_websocket(websocket, platform)
 
@@ -280,14 +327,38 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
     async def broadcast_message(self, message: Dict[str, Any]):
         """广播消息给所有连接的客户端"""
         disconnected = set()
-        for websocket in self.active_websockets:
+        for websocket in list(self.active_websockets):
             try:
-                await websocket.send_json(message)
-            except Exception:
-                disconnected.add(websocket)
+                # 检查连接状态
+                if websocket.client_state.value >= 3:  # CLOSED state
+                    disconnected.add(websocket)
+                    continue
 
+                await websocket.send_json(message)
+            except (WebSocketDisconnect, ConnectionResetError):
+                disconnected.add(websocket)
+            except Exception as e:
+                logger.warning(f"广播消息失败: {e}")
+                # 检查是否是连接相关的错误
+                error_msg = str(e).lower()
+                if any(
+                    keyword in error_msg
+                    for keyword in ["closed", "disconnect", "reset"]
+                ):
+                    disconnected.add(websocket)
+
+        # 清理断开的连接
         for websocket in disconnected:
-            self.active_websockets.remove(websocket)
+            if websocket in self.active_websockets:
+                self.active_websockets.remove(websocket)
+            # 从平台映射中移除
+            platform_to_remove = None
+            for platform, ws in self.platform_websockets.items():
+                if ws == websocket:
+                    platform_to_remove = platform
+                    break
+            if platform_to_remove:
+                del self.platform_websockets[platform_to_remove]
 
     async def send_message(self, target: str, message: Dict[str, Any]) -> bool:
         """向指定平台发送消息"""
@@ -295,12 +366,42 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
             logger.warning(f"未找到目标平台: {target}")
             return False
 
+        websocket = self.platform_websockets[target]
+
+        # 检查WebSocket连接状态
         try:
-            await self.platform_websockets[target].send_json(message)
+            # 检查连接是否已关闭
+            if websocket.client_state.value >= 3:  # CLOSED state
+                logger.warning(f"平台 {target} 的WebSocket连接已关闭")
+                self._remove_websocket(websocket, target)
+                return False
+
+            await websocket.send_json(message)
             return True
+        except WebSocketDisconnect:
+            logger.warning(f"平台 {target} WebSocket连接断开")
+            self._remove_websocket(websocket, target)
+            return False
+        except ConnectionResetError:
+            logger.warning(f"平台 {target} 连接被重置")
+            self._remove_websocket(websocket, target)
+            return False
         except Exception as e:
-            logger.error(f"发送消息到平台 {target} 失败: {e}")
-            self._remove_websocket(self.platform_websockets[target], target)
+            # 检查是否是连接相关的错误
+            error_msg = str(e).lower()
+            if any(
+                keyword in error_msg
+                for keyword in ["1012", "closed", "disconnect", "reset", "connection"]
+            ):
+                logger.debug(f"平台 {target} 连接异常: {e}")
+            else:
+                logger.error(f"发送消息到平台 {target} 失败: {e}")
+
+            # 检查是否需要移除连接
+            if any(
+                keyword in error_msg for keyword in ["closed", "disconnect", "reset"]
+            ):
+                self._remove_websocket(websocket, target)
             return False
 
 
@@ -325,6 +426,12 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
         # 重连设置
         self.reconnect_interval = 5
         self.retry_count = 0
+
+        # 心跳设置
+        self.heartbeat_interval = 60  # 60秒心跳间隔
+
+        # 连接监控任务
+        self._monitor_task = None
 
     async def configure(
         self,
@@ -383,11 +490,15 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
                 connector=connector, timeout=timeout, headers=self.headers
             )
 
-            self.ws = await self.session.ws_connect(
-                self.url,
-                heartbeat=30,
-                compress=15,
-            )
+            # 设置WebSocket连接参数（兼容aiohttp 3.11.18）
+            ws_kwargs = {
+                "heartbeat": self.heartbeat_interval,  # 心跳间隔
+                "autoping": True,  # 自动ping
+                "compress": 15,  # 压缩级别
+                "autoclose": True,  # 自动关闭
+            }
+
+            self.ws = await self.session.ws_connect(self.url, **ws_kwargs)
 
             self.ws_connected = True
             self.retry_count = 0
@@ -433,6 +544,10 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
 
         self._running = True
 
+        # 启动连接监控任务
+        self._monitor_task = asyncio.create_task(self._connection_monitor())
+        self.add_background_task(self._monitor_task)
+
         while self._running:
             try:
                 if not self.ws_connected:
@@ -449,6 +564,9 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
 
                 # 持续接收消息
                 async for msg in self.ws:
+                    if not self._running:
+                        break
+
                     if msg.type == aiohttp.WSMsgType.TEXT:
                         try:
                             data = msg.json()
@@ -459,20 +577,55 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
                             logger.error(f"处理消息时出错: {e}")
                     elif msg.type == aiohttp.WSMsgType.ERROR:
                         logger.error(f"WebSocket连接错误: {self.ws.exception()}")
+                        self.ws_connected = False
                         break
                     elif msg.type == aiohttp.WSMsgType.CLOSED:
                         logger.warning("WebSocket连接已关闭")
+                        self.ws_connected = False
                         break
+                    elif msg.type == aiohttp.WSMsgType.PONG:
+                        logger.debug("收到PONG响应")
+                    elif msg.type == aiohttp.WSMsgType.PING:
+                        logger.debug("收到PING，将自动响应PONG")
 
                 # 如果到达这里，连接已关闭
                 self.ws_connected = False
 
             except asyncio.CancelledError:
+                # 任务被取消，通常是正常关闭流程，不记录错误
+                logger.debug("WebSocket客户端任务被取消")
                 raise
-            except Exception as e:
-                logger.error(f"WebSocket连接发生错误: {e}")
+            except KeyboardInterrupt:
+                # 手动中断，静默处理
+                logger.debug("WebSocket客户端因用户中断而关闭")
+                self.ws_connected = False
+                break
+            except aiohttp.ServerTimeoutError:
+                logger.warning("WebSocket心跳超时，尝试重连")
                 self.ws_connected = False
                 self.retry_count += 1
+            except Exception as e:
+                # 检查是否是连接关闭相关的错误
+                error_str = str(e).lower()
+                if any(
+                    keyword in error_str
+                    for keyword in [
+                        "1012",
+                        "connection",
+                        "closed",
+                        "disconnect",
+                        "reset",
+                    ]
+                ):
+                    logger.debug(f"WebSocket连接关闭: {e}")
+                else:
+                    logger.error(f"WebSocket连接发生错误: {e}")
+                self.ws_connected = False
+                self.retry_count += 1
+            finally:
+                # 确保连接状态正确更新
+                if self.ws and (self.ws.closed or self.ws.exception()):
+                    self.ws_connected = False
 
             # 等待重连
             if self._running and not self.ws_connected:
@@ -486,32 +639,59 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
         """停止客户端"""
         self._running = False
 
+        # 取消监控任务
+        if self._monitor_task and not self._monitor_task.done():
+            self._monitor_task.cancel()
+            try:
+                await self._monitor_task
+            except asyncio.CancelledError:
+                pass
+
         # 关闭WebSocket连接
         if self.ws and not self.ws.closed:
-            await self.ws.close()
+            try:
+                await self.ws.close()
+            except Exception as e:
+                logger.warning(f"关闭WebSocket时出错: {e}")
 
         # 关闭ClientSession
         if self.session and not self.session.closed:
-            await self.session.close()
+            try:
+                await self.session.close()
+            except Exception as e:
+                logger.warning(f"关闭ClientSession时出错: {e}")
 
         self.ws_connected = False
         self.ws = None
         self.session = None
+        self._monitor_task = None
 
         # 清理后台任务
         await self.cleanup_tasks()
 
     async def send_message(self, target: str, message: Dict[str, Any]) -> bool:
         """发送消息到服务器"""
-        if not self.ws_connected:
-            raise RuntimeError("未连接到服务器")
+        # 检查连接状态
+        if not self.is_connected():
+            logger.warning("WebSocket未连接，无法发送消息")
+            return False
 
         try:
             await self.ws.send_json(message)
             return True
-        except Exception as e:
+        except ConnectionResetError:
+            logger.warning("连接被重置，标记为断开")
             self.ws_connected = False
+            return False
+        except aiohttp.ConnectionClosed:
+            logger.warning("连接已关闭，标记为断开")
+            self.ws_connected = False
+            return False
+        except Exception as e:
             logger.error(f"发送消息失败: {e}")
+            # 检查是否是因为连接关闭导致的错误
+            if "close message has been sent" in str(e) or "closed" in str(e).lower():
+                self.ws_connected = False
             return False
 
     def is_connected(self) -> bool:
@@ -521,4 +701,59 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
         Returns:
             bool: 连接是否有效
         """
-        return self.ws_connected and self.ws is not None and not self.ws.closed
+        if not self.ws_connected:
+            return False
+
+        if self.ws is None:
+            self.ws_connected = False
+            return False
+
+        if self.ws.closed:
+            self.ws_connected = False
+            return False
+
+        # 检查是否有异常
+        if self.ws.exception():
+            self.ws_connected = False
+            return False
+
+        return True
+
+    async def ping(self) -> bool:
+        """发送ping消息检查连接健康状态"""
+        if not self.is_connected():
+            return False
+
+        try:
+            await self.ws.ping()
+            return True
+        except Exception as e:
+            logger.warning(f"Ping失败: {e}")
+            self.ws_connected = False
+            return False
+
+    async def reconnect(self) -> bool:
+        """手动重连"""
+        logger.info("尝试重新连接...")
+        await self.stop()
+        return await self.connect()
+
+    async def _connection_monitor(self):
+        """连接监控任务，定期检查连接状态"""
+        while self._running:
+            try:
+                await asyncio.sleep(30)  # 每30秒检查一次
+
+                if not self._running:
+                    break
+
+                if self.ws_connected and self.ws:
+                    # 检查连接是否真的有效
+                    if self.ws.closed or self.ws.exception():
+                        logger.warning("检测到连接异常，标记为断开")
+                        self.ws_connected = False
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"连接监控任务出错: {e}")
