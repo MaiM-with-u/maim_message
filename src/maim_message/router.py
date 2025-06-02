@@ -180,6 +180,13 @@ class Router:
                 pass
         self._monitor_task = None
 
+        # 然后停止所有客户端
+        stop_tasks = []
+        for client in self.clients.values():
+            stop_tasks.append(client.stop())
+        if stop_tasks:
+            await asyncio.gather(*stop_tasks, return_exceptions=True)
+
         # 取消所有客户端任务
         for task in self._client_tasks.values():
             if not task.done():
@@ -190,13 +197,6 @@ class Router:
         if self._client_tasks:
             await asyncio.gather(*self._client_tasks.values(), return_exceptions=True)
         self._client_tasks.clear()
-
-        # 然后停止所有客户端
-        stop_tasks = []
-        for client in self.clients.values():
-            stop_tasks.append(client.stop())
-        if stop_tasks:
-            await asyncio.gather(*stop_tasks, return_exceptions=True)
 
         self.clients.clear()
 

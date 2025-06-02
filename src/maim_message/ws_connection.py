@@ -7,6 +7,8 @@ import logging
 import ssl
 import aiohttp
 import uvicorn
+import os
+import traceback
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from typing import Dict, Any, Callable, List, Set, Optional, Union
 
@@ -118,6 +120,7 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
                         if any(
                             keyword in error_str
                             for keyword in [
+                                "1000",
                                 "1012",
                                 "connection",
                                 "closed",
@@ -516,22 +519,28 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
                 logger.error(f"连接错误: {str(e)}")
 
             # 确保在错误情况下关闭会话
-            if self.session and not self.session.closed:
-                await self.session.close()
-                self.session = None
+            await self._cleanup_session()
             return False
 
         except Exception as e:
             logger.error(f"连接时发生未预期的错误: {str(e)}")
-            import traceback
-
             logger.debug(traceback.format_exc())
 
             # 确保在错误情况下关闭会话
-            if self.session and not self.session.closed:
-                await self.session.close()
-                self.session = None
+            await self._cleanup_session()
             return False
+
+    async def _cleanup_session(self):
+        """安全地清理会话"""
+        if self.session and not self.session.closed:
+            try:
+                await self.session.close()
+                # 等待连接器完全关闭
+                await asyncio.sleep(0.1)
+            except Exception as e:
+                logger.debug(f"清理会话时出错: {e}")
+            finally:
+                self.session = None
 
     async def start(self):
         """开始接收消息循环"""
@@ -550,7 +559,7 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
 
         while self._running:
             try:
-                if not self.ws_connected:
+                if not self.ws_connected and self.ws:
                     success = await self.connect()
                     if not success:
                         retry_delay = min(
@@ -622,6 +631,8 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
                     logger.error(f"WebSocket连接发生错误: {e}")
                 self.ws_connected = False
                 self.retry_count += 1
+                # 清理可能损坏的连接
+                await self._cleanup_connection()
             finally:
                 # 确保连接状态正确更新
                 if self.ws and (self.ws.closed or self.ws.exception()):
@@ -635,9 +646,38 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
                 logger.info(f"等待 {retry_delay} 秒后重试...")
                 await asyncio.sleep(retry_delay)
 
+    async def _cleanup_connection(self):
+        """清理损坏的连接"""
+        try:
+            if self.ws and not self.ws.closed:
+                await self.ws.close()
+        except Exception:
+            pass
+
+        try:
+            if self.session and not self.session.closed:
+                await self.session.close()
+                await asyncio.sleep(0.1)  # 等待连接器关闭
+        except Exception:
+            pass
+        finally:
+            self.ws = None
+            self.session = None
+            self.ws_connected = False
+
     async def stop(self):
         """停止客户端"""
+        logger.info("正在停止WebSocket客户端...")
         self._running = False
+
+        # 关闭WebSocket连接
+        if self.ws and not self.ws.closed:
+            try:
+                await self.ws.close()
+                logger.debug("WebSocket连接已关闭")
+                self.ws = None
+            except Exception as e:
+                logger.warning(f"关闭WebSocket时出错: {e}")
 
         # 取消监控任务
         if self._monitor_task and not self._monitor_task.done():
@@ -647,27 +687,30 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
             except asyncio.CancelledError:
                 pass
 
-        # 关闭WebSocket连接
-        if self.ws and not self.ws.closed:
-            try:
-                await self.ws.close()
-            except Exception as e:
-                logger.warning(f"关闭WebSocket时出错: {e}")
+        # 先清理后台任务，避免在关闭连接时还有任务在运行
+        await self.cleanup_tasks()
 
-        # 关闭ClientSession
+        # 关闭ClientSession (使用更安全的方式)
         if self.session and not self.session.closed:
             try:
+                # 等待一小段时间让连接完全关闭
+                await asyncio.sleep(0.1)
                 await self.session.close()
+                logger.debug("ClientSession已关闭")
+
+                # 等待connector完全关闭
+                if hasattr(self.session, "connector") and self.session.connector:
+                    await asyncio.sleep(0.1)
+
             except Exception as e:
                 logger.warning(f"关闭ClientSession时出错: {e}")
 
+        # 重置状态
         self.ws_connected = False
         self.ws = None
         self.session = None
         self._monitor_task = None
-
-        # 清理后台任务
-        await self.cleanup_tasks()
+        logger.info("WebSocket客户端已停止")
 
     async def send_message(self, target: str, message: Dict[str, Any]) -> bool:
         """发送消息到服务器"""
@@ -735,7 +778,10 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
     async def reconnect(self) -> bool:
         """手动重连"""
         logger.info("尝试重新连接...")
-        await self.stop()
+        # 首先清理现有连接
+        await self._cleanup_connection()
+        # 重置重试计数
+        self.retry_count = 0
         return await self.connect()
 
     async def _connection_monitor(self):
