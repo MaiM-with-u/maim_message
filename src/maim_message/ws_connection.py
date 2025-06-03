@@ -513,10 +513,13 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
                 logger.error(
                     f"无法建立连接: {e.strerror if hasattr(e, 'strerror') else str(e)}"
                 )
+                self.ws_connected = False
             elif isinstance(e, aiohttp.ClientSSLError):
                 logger.error(f"SSL错误: {str(e)}")
+                self.ws_connected = False
             else:
                 logger.error(f"连接错误: {str(e)}")
+                self.ws_connected = False
 
             # 确保在错误情况下关闭会话
             await self._cleanup_session()
@@ -559,7 +562,8 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
 
         while self._running:
             try:
-                if not self.ws_connected and self.ws:
+                # 检查连接状态，如果未连接则尝试重连
+                if not self.ws_connected or self.ws is None:
                     success = await self.connect()
                     if not success:
                         retry_delay = min(
@@ -572,6 +576,8 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
                         continue
 
                 # 持续接收消息
+                if not self.ws_connected or self.ws is None:
+                    continue
                 async for msg in self.ws:
                     if not self._running:
                         break
