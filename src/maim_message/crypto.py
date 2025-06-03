@@ -2,6 +2,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 import os
 import struct
 import enum
@@ -25,7 +26,9 @@ class CryptoManager:
 
     def get_public_bytes(self) -> bytes:
         """获取公钥字节"""
-        return self.public_key.public_bytes_raw()
+        return self.public_key.public_bytes(
+            encoding=Encoding.Raw, format=PublicFormat.Raw
+        )
 
     def compute_shared_key(self, peer_public_key_bytes: bytes):
         """计算共享密钥"""

@@ -100,21 +100,16 @@ async def message_handler(message):
 route_config = RouteConfig(
     route_config={
         "qq123": TargetConfig(
-            url="wss://127.0.0.1:8090/ws",  # 使用wss协议
+            url="ws://127.0.0.1:8090/ws",  # 使用ws协议
             token=None,  # 如果需要token验证则在这里设置
-            ssl_verify=os.path.join(
-                os.path.dirname(__file__), "ssl", "server.crt"
-            ),  # SSL验证证书
         ),
         "qq321": TargetConfig(
-            url="wss://127.0.0.1:8090/ws",
+            url="ws://127.0.0.1:8090/ws",
             token=None,
-            ssl_verify=os.path.join(os.path.dirname(__file__), "ssl", "server.crt"),
         ),
         "qq111": TargetConfig(
-            url="wss://127.0.0.1:8090/ws",
+            url="ws://127.0.0.1:8090/ws",
             token=None,
-            ssl_verify=os.path.join(os.path.dirname(__file__), "ssl", "server.crt"),
         ),
     }
 )
@@ -146,28 +141,19 @@ async def main():
             "route_config": {
                 # 保持qq123不变
                 "qq123": {
-                    "url": "wss://127.0.0.1:8090/ws",
+                    "url": "ws://127.0.0.1:8090/ws",
                     "token": None,
-                    "ssl_verify": os.path.join(
-                        os.path.dirname(__file__), "ssl", "server.crt"
-                    ),
                 },
                 # 移除qq321
                 # 更改qq111的token
                 "qq111": {
-                    "url": "wss://127.0.0.1:8090/ws",
+                    "url": "ws://127.0.0.1:8090/ws",
                     "token": None,
-                    "ssl_verify": os.path.join(
-                        os.path.dirname(__file__), "ssl", "server.crt"
-                    ),
                 },
                 # 添加新平台
                 "qq999": {
-                    "url": "wss://127.0.0.1:8090/ws",
+                    "url": "ws://127.0.0.1:8090/ws",
                     "token": None,
-                    "ssl_verify": os.path.join(
-                        os.path.dirname(__file__), "ssl", "server.crt"
-                    ),
                 },
             }
         }
@@ -182,8 +168,14 @@ async def main():
         await router.send_message(construct_message("qq111"))
         await router.send_message(construct_message("qq999"))
 
-        # 保持运行直到被中断
-        await router_task
+        while True:
+            # 发送测试消息
+            print("发送测试消息...")
+            try:
+                await router.send_message(construct_message("qq123"))
+            except Exception as e:
+                print(f"发送消息失败: {e}")
+            await asyncio.sleep(5)
 
     finally:
         print("正在关闭连接...")

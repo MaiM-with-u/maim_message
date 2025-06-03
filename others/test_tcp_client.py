@@ -10,7 +10,6 @@ from maim_message import (
     TargetConfig,
 )
 import asyncio
-import os
 
 
 def construct_message(platform):
@@ -64,17 +63,17 @@ async def message_handler(message):
     print(f"收到消息: {message}")
 
 
-# 配置两个不同平台的路由
+# 配置两个不同平台的路由，带有令牌认证
 route_config = RouteConfig(
     route_config={
         "platform1": TargetConfig(
             url="tcp://127.0.0.1:8090",  # 本地测试服务器
-            token=None,
+            token="test_token_1",  # 使用有效令牌1
             ssl_verify=None,
         ),
         "platform2": TargetConfig(
             url="tcp://127.0.0.1:8090",  # 同一个服务器，不同平台
-            token=None,
+            token="test_token_2",  # 使用有效令牌2
             ssl_verify=None,
         ),
     }

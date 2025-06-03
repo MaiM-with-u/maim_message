@@ -1,10 +1,8 @@
 [project]
 name = "maim_message"
-version = "0.3.0"
+version = "0.3.6"
 description = "A message handling library"
-authors = [
-    {name = "tcmofashi"}
-]
+authors = [{ name = "tcmofashi" }]
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.70.0",
@@ -12,7 +10,7 @@ dependencies = [
     "aiohttp>=3.8.0",
     "pydantic>=1.9.0",
     "websockets>=10.0",
-    'cryptography'
+    'cryptography',
 ]
 
 [build-system]
