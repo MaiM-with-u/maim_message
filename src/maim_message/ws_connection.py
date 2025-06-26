@@ -427,7 +427,7 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
         self.session = None  # 保存ClientSession实例
 
         # 重连设置
-        self.reconnect_interval = 5
+        self.reconnect_interval = 1
         self.retry_count = 0
 
         # 心跳设置
@@ -567,7 +567,7 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
                     success = await self.connect()
                     if not success:
                         retry_delay = min(
-                            30,
+                            5,
                             self.reconnect_interval * (2 ** min(self.retry_count, 5)),
                         )
                         logger.info(f"等待 {retry_delay} 秒后重试...")
