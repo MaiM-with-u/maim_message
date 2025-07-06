@@ -120,7 +120,7 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
                         if any(
                             keyword in error_str
                             for keyword in [
-                                "1000",
+                                "10",
                                 "1012",
                                 "connection",
                                 "closed",
@@ -732,15 +732,9 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
             logger.warning("连接被重置，标记为断开")
             self.ws_connected = False
             return False
-        except aiohttp.ConnectionClosed:
-            logger.warning("连接已关闭，标记为断开")
-            self.ws_connected = False
-            return False
         except Exception as e:
             logger.error(f"发送消息失败: {e}")
-            # 检查是否是因为连接关闭导致的错误
-            if "close message has been sent" in str(e) or "closed" in str(e).lower():
-                self.ws_connected = False
+            self.ws_connected = False
             return False
 
     def is_connected(self) -> bool:
