@@ -2,7 +2,7 @@
 重构后的路由模块，使用统一的通信接口
 """
 
-from typing import Optional, Dict, Callable, List
+from typing import Optional, Dict, Callable, List, Any
 from dataclasses import dataclass, asdict
 import asyncio
 import logging
@@ -65,6 +65,8 @@ class Router:
         self._running = False
         self._client_tasks: Dict[str, asyncio.Task] = {}
         self._monitor_task = None
+        # 添加自定义消息类型处理器字典
+        self.custom_message_handlers: Dict[str, List[Callable]] = {}
 
     async def _monitor_connections(self):
         """监控所有客户端连接状态"""
@@ -133,8 +135,16 @@ class Router:
             token=config.token,
             ssl_verify=config.ssl_verify,
         )
+        
+        # 注册常规消息处理器
         for handler in self.handlers:
             client.register_message_handler(handler)
+            
+        # 注册自定义消息处理器
+        for message_type_name, handlers in self.custom_message_handlers.items():
+            for handler in handlers:
+                client.register_custom_message_handler(message_type_name, handler)
+                
         self.clients[platform] = client
 
         if self._running:
@@ -203,6 +213,23 @@ class Router:
     def register_class_handler(self, handler):
         self.handlers.append(handler)
 
+    def register_custom_message_handler(self, message_type_name: str, handler: Callable):
+        """注册自定义消息类型的处理函数
+
+        Args:
+            message_type_name: 自定义消息类型名称
+            handler: 处理函数，接收字典类型的消息内容
+        """
+        if message_type_name not in self.custom_message_handlers:
+            self.custom_message_handlers[message_type_name] = []
+
+        if handler not in self.custom_message_handlers[message_type_name]:
+            self.custom_message_handlers[message_type_name].append(handler)
+
+        # 为所有已连接的客户端注册此处理器
+        for client in self.clients.values():
+            client.register_custom_message_handler(message_type_name, handler)
+
     def get_target_url(self, message: MessageBase):
         platform = message.message_info.platform
         if platform in self.config.route_config.keys():
@@ -217,6 +244,23 @@ class Router:
             raise ValueError(f"不存在该平台url配置: {platform}")
         # 发送消息
         return await self.clients[platform].send_message(message.to_dict())
+        
+    async def send_custom_message(self, platform: str, message_type_name: str, message: Dict[str, Any]) -> bool:
+        """发送自定义类型消息到指定平台
+        
+        Args:
+            platform: 目标平台名称
+            message_type_name: 自定义消息类型名称
+            message: 消息内容，字典格式
+            
+        Returns:
+            bool: 发送是否成功
+        """
+        if platform not in self.clients:
+            raise ValueError(f"平台 {platform} 未连接")
+            
+        # 使用对应客户端发送自定义消息
+        return await self.clients[platform].send_custom_message(message_type_name, message)
 
     async def update_config(self, config_data: Dict):
         """更新路由配置并动态调整连接"""
@@ -269,3 +313,43 @@ class Router:
 
         client = self.clients.get(platform)
         return client is not None and client.is_connected()
+
+    def register_message_handler(self, message_type: str, handler: Callable):
+        """
+        注册自定义消息类型的处理器
+
+        Args:
+            message_type (str): 消息类型标识符
+            handler (Callable): 处理函数，接收一个消息对象作为参数
+        """
+        if message_type not in self.custom_message_handlers:
+            self.custom_message_handlers[message_type] = []
+        self.custom_message_handlers[message_type].append(handler)
+
+    def unregister_message_handler(self, message_type: str, handler: Callable):
+        """
+        注销自定义消息类型的处理器
+
+        Args:
+            message_type (str): 消息类型标识符
+            handler (Callable): 处理函数，接收一个消息对象作为参数
+        """
+        if message_type in self.custom_message_handlers:
+            self.custom_message_handlers[message_type].remove(handler)
+            if not self.custom_message_handlers[message_type]:
+                del self.custom_message_handlers[message_type]
+
+    def handle_message(self, message: MessageBase):
+        """
+        处理接收到的消息，调用相应的处理器
+
+        Args:
+            message (MessageBase): 接收到的消息对象
+        """
+        message_type = message.message_info.message_type
+        if message_type in self.custom_message_handlers:
+            for handler in self.custom_message_handlers[message_type]:
+                try:
+                    handler(message)
+                except Exception as e:
+                    logger.error(f"处理消息时发生错误: {e}", exc_info=True)

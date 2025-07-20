@@ -20,42 +20,114 @@ class BaseMessageHandler:
     def __init__(self):
         self.message_handlers: List[Callable] = []
         self.background_tasks = set()
+        # 添加自定义消息类型处理器字典
+        self.custom_message_handlers: Dict[str, List[Callable]] = {}
 
     def register_message_handler(self, handler: Callable):
         """注册消息处理函数"""
         if handler not in self.message_handlers:
             self.message_handlers.append(handler)
 
+    def register_custom_message_handler(
+        self, message_type_name: str, handler: Callable
+    ):
+        """注册自定义消息类型的处理函数
+
+        Args:
+            message_type_name: 自定义消息类型名称
+            handler: 处理函数，接收字典类型的消息内容
+        """
+        if message_type_name not in self.custom_message_handlers:
+            self.custom_message_handlers[message_type_name] = []
+
+        if handler not in self.custom_message_handlers[message_type_name]:
+            self.custom_message_handlers[message_type_name].append(handler)
+
     async def process_message(self, message: Dict[str, Any]):
         """处理单条消息"""
         tasks = []
 
-        # 处理全局处理器
-        for handler in self.message_handlers:
-            try:
-                result = handler(message)
-                if asyncio.iscoroutine(result):
-                    task = asyncio.create_task(result)
-                    tasks.append(task)
-                    self.background_tasks.add(task)
-                    task.add_done_callback(self.background_tasks.discard)
-            except Exception as e:
-                logger.error(f"处理消息时出错: {e}")
-                import traceback
+        # 判断是否为自定义消息类型
+        is_custom_message = False
+        if isinstance(message, dict):
+            # 优先使用is_custom_message标志判断
+            if message.get("is_custom_message"):
+                is_custom_message = True
+                message_type_name = message.get("message_type_name")
+                if (
+                    message_type_name
+                    and message_type_name in self.custom_message_handlers
+                ):
+                    # 处理自定义消息类型的处理器
+                    for handler in self.custom_message_handlers[message_type_name]:
+                        try:
+                            result = handler(message)
+                            if asyncio.iscoroutine(result):
+                                task = asyncio.create_task(result)
+                                tasks.append(task)
+                                self.background_tasks.add(task)
+                                task.add_done_callback(self.background_tasks.discard)
+                        except Exception as e:
+                            logger.error(
+                                f"处理自定义消息类型 {message_type_name} 时出错: {e}"
+                            )
+                            import traceback
 
-                logger.debug(traceback.format_exc())
+                            logger.debug(traceback.format_exc())
+                else:
+                    logger.warning(f"收到未注册的自定义消息类型: {message_type_name}")
+            # 兼容旧版本：检查message_type_name
+            elif (
+                message.get("message_type_name")
+                and message.get("message_type_name") in self.custom_message_handlers
+            ):
+                is_custom_message = True
+                message_type_name = message.get("message_type_name")
+                # 处理自定义消息类型的处理器
+                for handler in self.custom_message_handlers[message_type_name]:
+                    try:
+                        result = handler(message)
+                        if asyncio.iscoroutine(result):
+                            task = asyncio.create_task(result)
+                            tasks.append(task)
+                            self.background_tasks.add(task)
+                            task.add_done_callback(self.background_tasks.discard)
+                    except Exception as e:
+                        logger.error(
+                            f"处理自定义消息类型 {message_type_name} 时出错: {e}"
+                        )
+                        import traceback
+
+                        logger.debug(traceback.format_exc())
+
+        if not is_custom_message:
+            # 处理全局处理器
+            for handler in self.message_handlers:
+                try:
+                    result = handler(message)
+                    if asyncio.iscoroutine(result):
+                        task = asyncio.create_task(result)
+                        tasks.append(task)
+                        self.background_tasks.add(task)
+                        task.add_done_callback(self.background_tasks.discard)
+                except Exception as e:
+                    logger.error(f"处理消息时出错: {e}")
+                    import traceback
+
+                    logger.debug(traceback.format_exc())
 
         # 处理特定平台的处理器
-        platform = None
         try:
             # 尝试从消息中获取平台信息
             if isinstance(message, dict):
                 if "message_info" in message and isinstance(
                     message["message_info"], dict
                 ):
-                    platform = message["message_info"].get("platform")
+                    # 提取平台信息供扩展功能使用
+                    _ = message["message_info"].get("platform")
                 elif "platform" in message:
-                    platform = message.get("platform")
+                    # 提取平台信息供扩展功能使用
+                    _ = message.get("platform")
 
         except Exception as e:
             logger.error(f"解析消息平台信息时出错: {e}")
@@ -125,6 +197,17 @@ class MessageServer(BaseMessageHandler):
         if handler not in self.message_handlers:
             self.message_handlers.append(handler)
 
+    def register_custom_message_handler(
+        self, message_type_name: str, handler: Callable
+    ):
+        """注册自定义消息类型的处理函数
+
+        Args:
+            message_type_name: 自定义消息类型名称
+            handler: 处理函数，接收字典类型的消息内容
+        """
+        super().register_custom_message_handler(message_type_name, handler)
+
     async def verify_token(self, token: str) -> bool:
         """验证令牌是否有效 (仅WebSocket模式)"""
         if self.mode == "ws":
@@ -152,6 +235,31 @@ class MessageServer(BaseMessageHandler):
         await self.connection.send_message(
             message.message_info.platform, message.to_dict()
         )
+
+    async def send_custom_message(
+        self, platform: str, message_type_name: str, message: Dict[str, Any]
+    ):
+        """发送自定义消息给指定平台
+
+        Args:
+            platform: 目标平台名称，必须与接收方的platform一致，否则可能导致消息无法路由
+            message_type_name: 自定义消息类型名称
+            message: 消息内容，字典格式
+
+        Returns:
+            bool: 发送是否成功
+        """
+        # 构建完整消息
+        # 使用明确的字段区分自定义消息和MessageBase消息
+        full_message = {
+            "platform": platform,
+            "message_type_name": message_type_name,
+            "content": message,
+            "timestamp": asyncio.get_event_loop().time(),
+            # 添加一个标志，表明这是自定义消息类型
+            "is_custom_message": True,
+        }
+        return await self.connection.send_message(platform, full_message)
 
     def run_sync(self):
         """同步方式运行服务器 (仅WebSocket模式)"""
@@ -232,6 +340,17 @@ class MessageClient(BaseMessageHandler):
         if handler not in self.message_handlers:
             self.message_handlers.append(handler)
 
+    def register_custom_message_handler(
+        self, message_type_name: str, handler: Callable
+    ):
+        """注册自定义消息类型的处理函数
+
+        Args:
+            message_type_name: 自定义消息类型名称
+            handler: 处理函数，接收字典类型的消息内容
+        """
+        super().register_custom_message_handler(message_type_name, handler)
+
     async def connect(
         self,
         url: str,
@@ -307,6 +426,32 @@ class MessageClient(BaseMessageHandler):
             raise RuntimeError("请先调用connect方法连接到服务器")
 
         return await self.connection.send_message(self.platform, message)
+
+    async def send_custom_message(
+        self, message_type_name: str, message: Dict[str, Any]
+    ) -> bool:
+        """发送自定义消息到服务器
+
+        Args:
+            message_type_name: 自定义消息类型名称（用于接收方识别并路由到相应处理器）
+            message: 消息内容，字典格式
+
+        Returns:
+            bool: 发送是否成功
+        """
+        if not hasattr(self, "connection"):
+            raise RuntimeError("请先调用connect方法连接到服务器")
+
+        # 构建完整消息
+        full_message = {
+            "platform": self.platform,
+            "message_type_name": message_type_name,
+            "content": message,
+            "timestamp": asyncio.get_event_loop().time(),
+            # 添加一个标志，表明这是自定义消息类型
+            "is_custom_message": True,
+        }
+        return await self.connection.send_message(self.platform, full_message)
 
     def is_connected(self) -> bool:
         """
