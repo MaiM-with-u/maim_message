@@ -35,6 +35,7 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
         ssl_keyfile: Optional[str] = None,
         enable_token: bool = False,
         enable_custom_uvicorn_logger: Optional[bool] = False,
+        max_message_size: int = 104857600,  # 100MB 默认值
     ):
         super().__init__()
         self.host = host
@@ -45,6 +46,7 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
         self.ssl_certfile = ssl_certfile
         self.ssl_keyfile = ssl_keyfile
         self.enable_custom_uvicorn_logger = enable_custom_uvicorn_logger
+        self.max_message_size = max_message_size
 
         # WebSocket连接管理
         self.active_websockets: Set[WebSocket] = set()
@@ -222,6 +224,7 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
                 ssl_certfile=self.ssl_certfile,
                 ssl_keyfile=self.ssl_keyfile,
                 log_config=log_config,
+                ws_max_size=self.max_message_size,  # 设置WebSocket最大消息大小为100MB
             )
             # 确保uvicorn日志系统使用我们的配置
             configure_uvicorn_logging()
@@ -232,6 +235,7 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
                 port=self.port,
                 ssl_certfile=self.ssl_certfile,
                 ssl_keyfile=self.ssl_keyfile,
+                ws_max_size=self.max_message_size,  # 设置WebSocket最大消息大小为100MB
             )
 
         # 启动服务器
@@ -274,6 +278,7 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
                 ssl_certfile=self.ssl_certfile,
                 ssl_keyfile=self.ssl_keyfile,
                 log_config=log_config,
+                ws_max_size=self.max_message_size,  # 设置WebSocket最大消息大小为100MB
             )
             # 确保uvicorn日志系统使用我们的配置
             configure_uvicorn_logging()
@@ -284,6 +289,7 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
                 port=self.port,
                 ssl_certfile=self.ssl_certfile,
                 ssl_keyfile=self.ssl_keyfile,
+                ws_max_size=self.max_message_size,  # 设置WebSocket最大消息大小为100MB
             )
 
         server = uvicorn.Server(config)
@@ -420,6 +426,7 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
         self.token = None
         self.ssl_verify = None
         self.headers = {}
+        self.max_message_size = 104857600  # 100MB 默认值
 
         # WebSocket连接
         self.ws = None
@@ -442,12 +449,15 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
         platform: str,
         token: Optional[str] = None,
         ssl_verify: Optional[str] = None,
+        max_message_size: Optional[int] = None,
     ):
         """配置连接参数"""
         self.url = url
         self.platform = platform
         self.token = token
         self.ssl_verify = ssl_verify
+        if max_message_size is not None:
+            self.max_message_size = max_message_size
 
         # 设置请求头
         self.headers = {"platform": platform}
@@ -499,6 +509,7 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
                 "autoping": True,  # 自动ping
                 "compress": 15,  # 压缩级别
                 "autoclose": True,  # 自动关闭
+                "max_msg_size": self.max_message_size,  # 设置最大消息大小为100MB
             }
 
             self.ws = await self.session.ws_connect(self.url, **ws_kwargs)
