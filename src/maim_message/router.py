@@ -135,16 +135,16 @@ class Router:
             token=config.token,
             ssl_verify=config.ssl_verify,
         )
-        
+
         # 注册常规消息处理器
         for handler in self.handlers:
             client.register_message_handler(handler)
-            
+
         # 注册自定义消息处理器
         for message_type_name, handlers in self.custom_message_handlers.items():
             for handler in handlers:
                 client.register_custom_message_handler(message_type_name, handler)
-                
+
         self.clients[platform] = client
 
         if self._running:
@@ -213,7 +213,9 @@ class Router:
     def register_class_handler(self, handler):
         self.handlers.append(handler)
 
-    def register_custom_message_handler(self, message_type_name: str, handler: Callable):
+    def register_custom_message_handler(
+        self, message_type_name: str, handler: Callable
+    ):
         """注册自定义消息类型的处理函数
 
         Args:
@@ -244,23 +246,27 @@ class Router:
             raise ValueError(f"不存在该平台url配置: {platform}")
         # 发送消息
         return await self.clients[platform].send_message(message.to_dict())
-        
-    async def send_custom_message(self, platform: str, message_type_name: str, message: Dict[str, Any]) -> bool:
+
+    async def send_custom_message(
+        self, platform: str, message_type_name: str, message: Dict[str, Any]
+    ) -> bool:
         """发送自定义类型消息到指定平台
-        
+
         Args:
             platform: 目标平台名称
             message_type_name: 自定义消息类型名称
             message: 消息内容，字典格式
-            
+
         Returns:
             bool: 发送是否成功
         """
         if platform not in self.clients:
             raise ValueError(f"平台 {platform} 未连接")
-            
+
         # 使用对应客户端发送自定义消息
-        return await self.clients[platform].send_custom_message(message_type_name, message)
+        return await self.clients[platform].send_custom_message(
+            message_type_name, message
+        )
 
     async def update_config(self, config_data: Dict):
         """更新路由配置并动态调整连接"""
@@ -314,17 +320,14 @@ class Router:
         client = self.clients.get(platform)
         return client is not None and client.is_connected()
 
-    def register_message_handler(self, message_type: str, handler: Callable):
+    def register_message_handler(self, handler: Callable):
         """
-        注册自定义消息类型的处理器
+        注册消息的处理器
 
         Args:
-            message_type (str): 消息类型标识符
             handler (Callable): 处理函数，接收一个消息对象作为参数
         """
-        if message_type not in self.custom_message_handlers:
-            self.custom_message_handlers[message_type] = []
-        self.custom_message_handlers[message_type].append(handler)
+        self.register_class_handler(handler)
 
     def unregister_message_handler(self, message_type: str, handler: Callable):
         """

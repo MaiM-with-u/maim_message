@@ -106,6 +106,54 @@ class UserInfo:
 
 
 @dataclass
+class InfoBase:
+    """信息基类，包含群组和用户信息"""
+
+    group_info: Optional[GroupInfo] = None
+    user_info: Optional[UserInfo] = None
+
+    def to_dict(self) -> Dict:
+        """转换为字典格式"""
+        result = {}
+        if self.group_info is not None:
+            result["group_info"] = self.group_info.to_dict()
+        if self.user_info is not None:
+            result["user_info"] = self.user_info.to_dict()
+        return result
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> "InfoBase":
+        """从字典创建InfoBase实例
+
+        Args:
+            data: 包含必要字段的字典
+
+        Returns:
+            InfoBase: 新的实例
+        """
+        group_info = GroupInfo.from_dict(data.get("group_info", {}))
+        user_info = UserInfo.from_dict(data.get("user_info", {}))
+        return cls(
+            group_info=group_info,
+            user_info=user_info,
+        )
+
+
+@dataclass
+class SenderInfo(InfoBase):
+    """发送者信息类"""
+
+    pass
+
+
+@dataclass
+class ReceiverInfo(InfoBase):
+    """接收者信息类"""
+
+    pass
+
+
+@dataclass
 class FormatInfo:
     """格式信息类"""
 
@@ -174,13 +222,25 @@ class BaseMessageInfo:
     format_info: Optional[FormatInfo] = None
     template_info: Optional[TemplateInfo] = None
     additional_config: Optional[dict] = None
+    sender_info: Optional[SenderInfo] = None
+    receiver_info: Optional[ReceiverInfo] = None
 
     def to_dict(self) -> Dict:
         """转换为字典格式"""
         result = {}
         for field, value in asdict(self).items():
             if value is not None:
-                if isinstance(value, (GroupInfo, UserInfo, FormatInfo, TemplateInfo)):
+                if isinstance(
+                    value,
+                    (
+                        GroupInfo,
+                        UserInfo,
+                        FormatInfo,
+                        TemplateInfo,
+                        SenderInfo,
+                        ReceiverInfo,
+                    ),
+                ):
                     result[field] = value.to_dict()
                 else:
                     result[field] = value
@@ -200,6 +260,16 @@ class BaseMessageInfo:
         user_info = UserInfo.from_dict(data.get("user_info", {}))
         format_info = FormatInfo.from_dict(data.get("format_info", {}))
         template_info = TemplateInfo.from_dict(data.get("template_info", {}))
+        sender_info = (
+            SenderInfo.from_dict(data.get("sender_info", {}))
+            if data.get("sender_info")
+            else None
+        )
+        receiver_info = (
+            ReceiverInfo.from_dict(data.get("receiver_info", {}))
+            if data.get("receiver_info")
+            else None
+        )
         return cls(
             platform=data.get("platform"),
             message_id=data.get("message_id"),
@@ -209,6 +279,8 @@ class BaseMessageInfo:
             user_info=user_info,
             format_info=format_info,
             template_info=template_info,
+            sender_info=sender_info,
+            receiver_info=receiver_info,
         )
 
 
