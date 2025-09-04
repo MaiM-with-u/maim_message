@@ -217,8 +217,12 @@ class BaseMessageInfo:
     platform: Optional[str] = None
     message_id: Optional[str] = None
     time: Optional[float] = None
-    group_info: Optional[GroupInfo] = None
-    user_info: Optional[UserInfo] = None
+    group_info: Optional[GroupInfo] = (
+        None  # 注意，当前版本已由sender_info和receiver_info替代，即将废弃
+    )
+    user_info: Optional[UserInfo] = (
+        None  # 注意，当前版本已由sender_info和receiver_info替代，即将废弃
+    )
     format_info: Optional[FormatInfo] = None
     template_info: Optional[TemplateInfo] = None
     additional_config: Optional[dict] = None
@@ -290,7 +294,7 @@ class MessageBase:
 
     message_info: BaseMessageInfo
     message_segment: Seg
-    raw_message: Optional[str] = None  # 原始消息，包含未解析的cq码
+    raw_message: Optional[str] = None  # 即将移除
 
     def to_dict(self) -> Dict:
         """转换为字典格式
