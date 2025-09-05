@@ -131,8 +131,14 @@ class InfoBase:
         Returns:
             InfoBase: 新的实例
         """
-        group_info = GroupInfo.from_dict(data.get("group_info", {}))
-        user_info = UserInfo.from_dict(data.get("user_info", {}))
+        if data.get("group_info", {}) is not None:
+            group_info = GroupInfo.from_dict(data.get("group_info", {}))
+        else:
+            group_info = None
+        if data.get("user_info", {}) is not None:
+            user_info = UserInfo.from_dict(data.get("user_info", {}))
+        else:
+            user_info = None
         return cls(
             group_info=group_info,
             user_info=user_info,
