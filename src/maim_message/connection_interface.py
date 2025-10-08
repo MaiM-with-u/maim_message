@@ -32,7 +32,7 @@ class ConnectionInterface(ABC):
         Returns:
             bool: 发送是否成功
         """
-        pass
+        return False
 
     @abstractmethod
     def register_message_handler(self, handler: Callable):

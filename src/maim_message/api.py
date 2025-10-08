@@ -228,11 +228,11 @@ class MessageServer(BaseMessageHandler):
 
     async def broadcast_to_platform(self, platform: str, message: Dict[str, Any]):
         """向指定平台的所有客户端广播消息"""
-        await self.connection.send_message(platform, message)
+        return await self.connection.send_message(platform, message)
 
     async def send_message(self, message: MessageBase):
         """发送消息给指定平台"""
-        await self.connection.send_message(
+        return await self.connection.send_message(
             message.message_info.platform, message.to_dict()
         )
 
