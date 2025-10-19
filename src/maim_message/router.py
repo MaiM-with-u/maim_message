@@ -83,11 +83,15 @@ class Router:
     async def _reconnect_platform(self, platform: str):
         """重新连接指定平台"""
         if platform in self._client_tasks:
-            task = self._client_tasks[platform]
-            await task
+            task = self._client_tasks.pop(platform)
             if not task.done():
                 task.cancel()
-            del self._client_tasks[platform]
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+            else:
+                await task
 
         if platform in self.clients:
             await self.clients[platform].stop()

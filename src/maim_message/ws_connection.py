@@ -714,6 +714,23 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
                     if self.ws.closed or self.ws.exception():
                         logger.warning("检测到连接异常，标记为断开")
                         self.ws_connected = False
+                        await self._cleanup_connection()
+                        continue
+
+                    try:
+                        ping_ok = await asyncio.wait_for(
+                            self.ping(), timeout=max(5, self.heartbeat_interval)
+                        )
+                    except asyncio.TimeoutError:
+                        logger.warning("Ping 超时，标记为断开")
+                        ping_ok = False
+                    except Exception as exc:  # pylint: disable=broad-except
+                        logger.warning("Ping 出现异常: %s", exc)
+                        ping_ok = False
+
+                    if not ping_ok:
+                        self.ws_connected = False
+                        await self._cleanup_connection()
             except asyncio.CancelledError:
                 break
             except Exception as exc:  # pylint: disable=broad-except
