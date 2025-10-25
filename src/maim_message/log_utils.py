@@ -5,6 +5,9 @@ from typing import Optional
 # 默认日志格式
 DEFAULT_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
+# 默认处理器名称，用于识别和清理由本模块添加的处理器
+DEFAULT_HANDLER_NAME = "maim_message_default_handler"
+
 # 全局日志对象
 _logger = None
 
@@ -39,13 +42,25 @@ def setup_logger(
 
     # 使用默认INFO级别
     logger.setLevel(logging.INFO)
+    logger.propagate = False  # 避免日志向上传播导致重复输出
 
-    # 创建处理器和格式化器
-    if not logger.handlers:
-        handler = logging.StreamHandler()
-        formatter = logging.Formatter(format_str)
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
+    # 尝试复用或创建默认处理器，避免重复添加
+    formatter = logging.Formatter(format_str)
+    default_handler = None
+
+    for handler in list(logger.handlers):
+        if getattr(handler, "name", "") == DEFAULT_HANDLER_NAME:
+            if default_handler is None:
+                default_handler = handler
+            else:
+                logger.removeHandler(handler)  # 清理重复的默认处理器
+
+    if default_handler is None:
+        default_handler = logging.StreamHandler()
+        default_handler.name = DEFAULT_HANDLER_NAME
+        logger.addHandler(default_handler)
+
+    default_handler.setFormatter(formatter)
 
     _logger = logger
     return logger
@@ -82,6 +97,10 @@ def reset_logger():
     重置日志记录器到未初始化状态，以便重新配置
     """
     global _logger
+    if _logger is not None:
+        for handler in list(_logger.handlers):
+            if getattr(handler, "name", "") == DEFAULT_HANDLER_NAME:
+                _logger.removeHandler(handler)
     _logger = None
 
 
@@ -91,7 +110,6 @@ def configure_uvicorn_logging():
     """
     # 获取当前日志级别，默认使用INFO
     level = logging.INFO
-    disable_all_logs = False
 
     try:
         current_logger = get_logger()
@@ -107,11 +125,9 @@ def configure_uvicorn_logging():
             # 标准logging Logger的处理
             level = getattr(current_logger, "level", logging.INFO)
             if callable(level) or not isinstance(level, int):
-                disable_all_logs = True
                 level = logging.CRITICAL  # 如果level不是整数，使用CRITICAL级别静默日志
     except Exception:
         # 如果出现错误，禁用所有日志
-        disable_all_logs = True
         level = logging.CRITICAL
         pass
 
