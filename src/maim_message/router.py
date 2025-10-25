@@ -83,11 +83,27 @@ class Router:
     async def _reconnect_platform(self, platform: str):
         """重新连接指定平台"""
         if platform in self._client_tasks:
-            task = self._client_tasks[platform]
-            await task
-            if not task.done():
-                task.cancel()
-            del self._client_tasks[platform]
+            task = self._client_tasks.pop(platform)
+            try:
+                if not task.done():
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+                else:
+                    # 安全地检查异常
+                    try:
+                        exc = task.exception()
+                        if exc:
+                            logger.warning(f"平台 {platform} 的任务异常完成: {exc}")
+                        else:
+                            logger.debug(f"平台 {platform} 的任务正常完成")
+                    except (asyncio.InvalidStateError, RuntimeError) as e:
+                        # 处理任务状态异常
+                        logger.debug(f"检查任务异常时出错: {e}")
+            except Exception as e:
+                logger.error(f"处理平台 {platform} 的任务时出错: {e}")
 
         if platform in self.clients:
             await self.clients[platform].stop()
