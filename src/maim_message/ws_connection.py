@@ -101,7 +101,7 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
             if self.enable_token:
                 auth_header = websocket.headers.get("authorization")
                 if not auth_header or not await self.verify_token(auth_header):
-                    logger.warning("拒绝平台 %s 的连接请求: 令牌无效", platform)
+                    logger.warning(f"拒绝平台 {platform} 的连接请求: 令牌无效")
                     await websocket.close(code=1008, reason="无效的令牌")
                     return
 
@@ -114,13 +114,13 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
                         await previous.close(code=1000, reason="新的连接已建立")
                     except Exception:
                         logger.debug(
-                            "关闭平台 %s 旧连接时出现异常", platform, exc_info=True
+                            f"关闭平台 {platform} 旧连接时出现异常", exc_info=True
                         )
                     finally:
                         self._remove_websocket(previous, platform, force=True)
 
                 self.platform_websockets[platform] = websocket
-                logger.info("平台 %s WebSocket 已连接", platform)
+                logger.info(f"平台 {platform} WebSocket 已连接")
             else:
                 logger.info("收到未标记平台的 WebSocket 连接")
 
@@ -129,7 +129,7 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
                     try:
                         message = await websocket.receive_json()
                     except ValueError as exc:
-                        logger.warning("平台 %s 收到无法解析的 JSON: %s", platform, exc)
+                        logger.warning(f"平台 {platform} 收到无法解析的 JSON: {exc}")
                         continue
 
                     if platform != "unknown":
@@ -140,19 +140,19 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
                     task = asyncio.create_task(self.process_message(message))
                     self.add_background_task(task)
             except WebSocketDisconnect:
-                logger.info("平台 %s WebSocket 已断开", platform)
+                logger.info(f"平台 {platform} WebSocket 已断开")
                 self._remove_websocket(websocket, platform, force=True)
             except ConnectionResetError:
-                logger.warning("平台 %s WebSocket 连接被重置", platform)
+                logger.warning(f"平台 {platform} WebSocket 连接被重置")
                 self._remove_websocket(websocket, platform, force=True)
             except asyncio.CancelledError:
-                logger.debug("平台 %s WebSocket 任务被取消", platform)
+                logger.debug(f"平台 {platform} WebSocket 任务被取消")
                 self._remove_websocket(websocket, platform, force=True)
             except Exception as exc:  # pylint: disable=broad-except
                 if _looks_like_connection_error(exc):
-                    logger.debug("平台 %s WebSocket 连接关闭: %s", platform, exc)
+                    logger.debug(f"平台 {platform} WebSocket 连接关闭: {exc}")
                 else:
-                    logger.exception("平台 %s WebSocket 处理异常", platform)
+                    logger.exception(f"平台 {platform} WebSocket 处理异常")
                 self._remove_websocket(websocket, platform, force=True)
 
     def _remove_websocket(
@@ -171,31 +171,25 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
 
         if not force and state == WebSocketState.CONNECTED:
             logger.debug(
-                "跳过移除 WebSocket (platform=%s, ws_id=%s) 因状态仍为 CONNECTED",
-                platform,
-                id(websocket),
+                f"跳过移除 WebSocket (platform={platform}, ws_id={id(websocket)}) 因状态仍为 CONNECTED"
             )
             return
 
         logger.debug(
-            "移除 WebSocket (platform=%s, ws_id=%s, state=%s, force=%s)",
-            platform,
-            id(websocket),
-            state_name,
-            force,
+            f"移除 WebSocket (platform={platform}, ws_id={id(websocket)}, state={state_name}, force={force})"
         )
 
         self.active_websockets.discard(websocket)
 
         if platform and self.platform_websockets.get(platform) is websocket:
             del self.platform_websockets[platform]
-            logger.debug("已移除平台 %s 的 WebSocket 映射", platform)
+            logger.debug(f"已移除平台 {platform} 的 WebSocket 映射")
             return
 
         for key, value in list(self.platform_websockets.items()):
             if value is websocket:
                 del self.platform_websockets[key]
-                logger.debug("移除了非直接映射的平台 %s 的 WebSocket", key)
+                logger.debug(f"移除了非直接映射的平台 {key} 的 WebSocket")
                 break
 
     # ------------------------------------------------------------------
@@ -214,16 +208,14 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
 
     def _validate_ssl_files(self) -> None:
         if self.ssl_certfile and not os.path.exists(self.ssl_certfile):
-            logger.error("SSL 证书文件不存在: %s", self.ssl_certfile)
+            logger.error(f"SSL 证书文件不存在: {self.ssl_certfile}")
             raise FileNotFoundError(f"SSL 证书文件不存在: {self.ssl_certfile}")
         if self.ssl_keyfile and not os.path.exists(self.ssl_keyfile):
-            logger.error("SSL 密钥文件不存在: %s", self.ssl_keyfile)
+            logger.error(f"SSL 密钥文件不存在: {self.ssl_keyfile}")
             raise FileNotFoundError(f"SSL 密钥文件不存在: {self.ssl_keyfile}")
         if self.ssl_certfile and self.ssl_keyfile:
             logger.info(
-                "启用 SSL 证书: certfile=%s, keyfile=%s",
-                self.ssl_certfile,
-                self.ssl_keyfile,
+                f"启用 SSL 证书: certfile={self.ssl_certfile}, keyfile={self.ssl_keyfile}"
             )
 
     def _build_uvicorn_config(self) -> uvicorn.Config:
@@ -339,7 +331,7 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
             except (WebSocketDisconnect, ConnectionResetError):
                 disconnected.add(websocket)
             except Exception as exc:  # pylint: disable=broad-except
-                logger.warning("广播消息失败: %s", exc)
+                logger.warning(f"广播消息失败: {exc}")
                 if _looks_like_connection_error(exc):
                     disconnected.add(websocket)
 
@@ -356,42 +348,37 @@ class WebSocketServer(BaseConnection, ServerConnectionInterface):
 
     async def send_message(self, target: str, message: Dict[str, Any]) -> bool:
         logger.debug(
-            "准备向平台 %s 发送消息，当前映射平台: %s",
-            target,
-            list(self.platform_websockets.keys()),
+            f"准备向平台 {target} 发送消息，当前映射平台: {list(self.platform_websockets.keys())}"
         )
         websocket = self.platform_websockets.get(target)
         if not websocket:
-            logger.warning("未找到目标平台: %s", target)
+            logger.warning(f"未找到目标平台: {target}")
             return False
 
         if websocket.client_state != WebSocketState.CONNECTED:
-            logger.warning("平台 %s 的 WebSocket 连接已关闭", target)
+            logger.warning(f"平台 {target} 的 WebSocket 连接已关闭")
             self._remove_websocket(websocket, target, force=True)
             return False
 
         logger.debug(
-            "平台 %s WebSocket 状态: %s (ws_id=%s)",
-            target,
-            websocket.client_state.name
-            if isinstance(websocket.client_state, WebSocketState)
-            else str(websocket.client_state),
-            id(websocket),
+            f"平台 {target} WebSocket 状态: "
+            f"{websocket.client_state.name if isinstance(websocket.client_state, WebSocketState) else str(websocket.client_state)} "
+            f"(ws_id={id(websocket)})"
         )
 
         try:
             await websocket.send_json(message)
-            logger.debug("向平台 %s 发送消息成功", target)
+            logger.debug(f"向平台 {target} 发送消息成功")
             return True
         except WebSocketDisconnect:
-            logger.warning("平台 %s WebSocket 连接断开", target)
+            logger.warning(f"平台 {target} WebSocket 连接断开")
         except ConnectionResetError:
-            logger.warning("平台 %s 连接被重置", target)
+            logger.warning(f"平台 {target} 连接被重置")
         except Exception as exc:  # pylint: disable=broad-except
             if _looks_like_connection_error(exc):
-                logger.debug("平台 %s 连接异常: %s", target, exc)
+                logger.debug(f"平台 {target} 连接异常: {exc}")
             else:
-                logger.exception("发送消息到平台 %s 失败", target)
+                logger.exception(f"发送消息到平台 {target} 失败")
         self._remove_websocket(websocket, target, force=True)
 
         return False
@@ -458,7 +445,7 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
         if self.url.startswith("wss://"):
             ssl_context = ssl.create_default_context()
             if self.ssl_verify:
-                logger.info("使用证书验证: %s", self.ssl_verify)
+                logger.info(f"使用证书验证: {self.ssl_verify}")
                 ssl_context.load_verify_locations(self.ssl_verify)
             else:
                 logger.warning("未提供证书验证，当前连接将跳过 SSL 校验")
@@ -488,20 +475,20 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
                 "max_msg_size": self.max_message_size,
             }
 
-            logger.info("正在连接到 %s", self.url)
+            logger.info(f"正在连接到 {self.url}")
             self.ws = await self.session.ws_connect(self.url, **ws_kwargs)
 
             self.ws_connected = True
             self.retry_count = 0
-            logger.info("已成功连接到 %s", self.url)
+            logger.info(f"已成功连接到 {self.url}")
             return True
 
         except aiohttp.ClientConnectorError as exc:
-            logger.error("无法建立连接: %s", exc)
+            logger.error(f"无法建立连接: {exc}")
         except aiohttp.ClientSSLError as exc:
-            logger.error("SSL 错误: %s", exc)
+            logger.error(f"SSL 错误: {exc}")
         except aiohttp.ClientError as exc:
-            logger.error("连接错误: %s", exc)
+            logger.error(f"连接错误: {exc}")
         except Exception:  # pylint: disable=broad-except
             logger.exception("连接时发生未预期的错误")
         finally:
@@ -556,7 +543,7 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
                         retry_delay = min(
                             5, self.reconnect_interval * (2 ** min(self.retry_count, 5))
                         )
-                        logger.info("等待 %s 秒后重试...", retry_delay)
+                        logger.info(f"等待 {retry_delay} 秒后重试...")
                         await asyncio.sleep(retry_delay)
                         self.retry_count += 1
                         continue
@@ -569,7 +556,7 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
                         try:
                             data = msg.json()
                         except ValueError as exc:
-                            logger.warning("无法解析服务器消息: %s", exc)
+                            logger.warning(f"无法解析服务器消息: {exc}")
                             continue
 
                         task = asyncio.create_task(self.process_message(data))
@@ -581,7 +568,7 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
                     elif msg.type == WSMsgType.PONG:
                         logger.debug("收到服务器 PONG 响应")
                     elif msg.type == WSMsgType.ERROR:
-                        logger.error("WebSocket 连接错误: %s", self.ws.exception())
+                        logger.error(f"WebSocket 连接错误: {self.ws.exception()}")
                         self.ws_connected = False
                         break
                     elif msg.type == WSMsgType.CLOSED:
@@ -604,7 +591,7 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
                 self.retry_count += 1
             except Exception as exc:  # pylint: disable=broad-except
                 if _looks_like_connection_error(exc):
-                    logger.debug("WebSocket 连接关闭: %s", exc)
+                    logger.debug(f"WebSocket 连接关闭: {exc}")
                 else:
                     logger.exception("WebSocket 连接发生错误")
                 self.ws_connected = False
@@ -618,7 +605,7 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
                 retry_delay = min(
                     30, self.reconnect_interval * (2 ** min(self.retry_count, 5))
                 )
-                logger.info("等待 %s 秒后重试...", retry_delay)
+                logger.info(f"等待 {retry_delay} 秒后重试...")
                 await asyncio.sleep(retry_delay)
 
     async def stop(self) -> None:
@@ -630,7 +617,7 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
                 await self.ws.close()
                 logger.debug("WebSocket 连接已关闭")
             except Exception as exc:  # pylint: disable=broad-except
-                logger.warning("关闭 WebSocket 时出现异常: %s", exc)
+                logger.warning(f"关闭 WebSocket 时出现异常: {exc}")
             finally:
                 self.ws = None
 
@@ -660,7 +647,7 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
         except ConnectionResetError:
             logger.warning("连接被重置，标记为断开")
         except Exception as exc:  # pylint: disable=broad-except
-            logger.error("发送消息失败: %s", exc)
+            logger.error(f"发送消息失败: {exc}")
 
         self.ws_connected = False
         return False
@@ -691,7 +678,7 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
             await self.ws.ping()  # type: ignore[union-attr]
             return True
         except Exception as exc:  # pylint: disable=broad-except
-            logger.warning("Ping 失败: %s", exc)
+            logger.warning(f"Ping 失败: {exc}")
             self.ws_connected = False
             return False
 
@@ -718,6 +705,6 @@ class WebSocketClient(BaseConnection, ClientConnectionInterface):
                 break
             except Exception as exc:  # pylint: disable=broad-except
                 if _looks_like_connection_error(exc):
-                    logger.debug("连接监控任务出现异常: %s", exc)
+                    logger.debug(f"连接监控任务出现异常: {exc}")
                 else:
-                    logger.error("连接监控任务出错: %s", exc)
+                    logger.error(f"连接监控任务出错: {exc}")
