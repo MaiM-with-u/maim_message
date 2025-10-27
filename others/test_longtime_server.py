@@ -122,7 +122,7 @@ class LongTimeTestServer:
         print(f"[SERVER] 收到来自平台 {platform} 的消息: {received_text}")
         self._log_connection_state("after-receive")
 
-        delay = random.randint(20, 60)
+        delay = random.randint(2, 6)
         print(f"[SERVER] {delay}s 后向 {platform} 回发消息")
         await asyncio.sleep(delay)
         self._log_connection_state("before-send")

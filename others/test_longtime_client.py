@@ -56,8 +56,7 @@ def _build_text_message(content: str) -> MessageBase:
         raw_message=content,
     )
 
-
-incoming_queue: asyncio.Queue[MessageBase] = asyncio.Queue()
+incoming_queue: asyncio.Queue[MessageBase] | None = None
 
 
 async def message_handler(message_data: Dict) -> None:
@@ -68,6 +67,10 @@ async def message_handler(message_data: Dict) -> None:
 
     text = _segment_to_text(message.message_segment)
     print(f"[CLIENT] 收到服务器消息: {text}")
+
+    if incoming_queue is None:
+        raise RuntimeError("incoming_queue 尚未初始化")
+
     await incoming_queue.put(message)
 
 
@@ -87,6 +90,9 @@ async def main() -> None:
         }
     )
 
+    global incoming_queue
+    incoming_queue = asyncio.Queue()
+
     router = Router(route_config)
     router.register_class_handler(message_handler)
 
@@ -95,14 +101,17 @@ async def main() -> None:
     try:
         await asyncio.sleep(2)
 
-        initial_delay = random.randint(20, 60)
+        initial_delay = random.randint(2, 10)
         print(f"[CLIENT] {initial_delay}s 后发送首条消息")
         await asyncio.sleep(initial_delay)
         await send_message(router, f"客户端首发消息，延时 {initial_delay}s")
 
+        if incoming_queue is None:
+            raise RuntimeError("incoming_queue 尚未初始化")
+
         while True:
             await incoming_queue.get()
-            delay = random.randint(20, 60)
+            delay = random.randint(2, 6)
             print(f"[CLIENT] {delay}s 后准备发送下一条消息")
             await asyncio.sleep(delay)
             await send_message(router, f"客户端延时 {delay}s 回复: {int(time.time())}")

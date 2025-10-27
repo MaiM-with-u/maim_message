@@ -1,6 +1,6 @@
 [project]
 name = "maim_message"
-version = "0.5.5"
+version = "0.5.6"
 description = "A message handling library"
 authors = [{ name = "tcmofashi" }]
 requires-python = ">=3.10"
